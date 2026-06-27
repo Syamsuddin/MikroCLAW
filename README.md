@@ -8,7 +8,7 @@
 
 **MCP server yang membuat Claude Code bisa mengakses, memonitor, dan mengelola perangkat MikroTik RouterOS lewat tool ber-skema — plus dashboard monitoring live "Pulse".**
 
-[![Versi](https://img.shields.io/badge/versi-v1.6.0-6c4cf0?style=flat-square)](#riwayat-versi)
+[![Versi](https://img.shields.io/badge/versi-v1.7.0-6c4cf0?style=flat-square)](#riwayat-versi)
 [![Lisensi](https://img.shields.io/badge/lisensi-Apache--2.0-1f9d55?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#prasyarat)
 [![RouterOS](https://img.shields.io/badge/RouterOS-v7.1%2B-293239?style=flat-square&logo=mikrotik&logoColor=white)](#kompatibilitas-routeros-v6-vs-v7)
@@ -36,13 +36,14 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 | 🔒 **Read-only secara default** | Aman untuk eksplorasi & monitoring tanpa risiko mengubah konfigurasi. |
 | 🚧 **Operasi write digerbang** | Setiap tool yang mengubah config dikunci flag `MIKROCLAW_ALLOW_WRITE`. |
 | 🔑 **Kredensial via `.env`** | Tidak pernah muncul di chat, tidak ikut ter-commit. |
-| 🧩 **93 tool ber-skema** | 71 read + 22 write, termasuk `detect_roles` (deteksi peran) & `rest_get`/`rest_write` generic untuk path apa pun. |
-| 🧠 **7 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot, deteksi-peran. |
+| 🧩 **100 tool ber-skema** | 78 read + 22 write, termasuk lima fitur cerdas (Twin/Sentinel/Chronicle/Replay/Concierge), `detect_roles`, & `rest_get`/`rest_write` generic untuk path apa pun. |
+| 🧠 **12 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot, deteksi-peran + 5 fitur cerdas baru. |
+| 🤖 **5 fitur cerdas AI** | **Twin** (simulator what-if paket), **Sentinel** (deteksi botnet/IoT terinfeksi tanpa signature), **Chronicle** (mesin waktu konfigurasi + deteksi intrusi), **Replay** (RCA retrospektif "kenapa tadi lemot"), **Concierge** (laporan bisnis RT-RW net). |
 | 📟 **MikroCLAW Pulse** | Dashboard web monitoring **live per-detik** (read-only, via Server-Sent Events). |
 | ⚙️ **Installer satu-baris** | Windows (PowerShell) & macOS/Linux (bash) — pasang `uv`, dependency, `.env`, daftar MCP. |
 | 🌐 **Tanpa lock-in v7** | RouterOS v6 cukup ganti lapis transport ke API biner; daftar tool tetap. |
 
-**Versi terkini: `v1.6.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
+**Versi terkini: `v1.7.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
 > 📚 **Dokumen lain:** [`docs/FITUR.md`](docs/FITUR.md) (ikhtisar fitur ringkas) ·
 > [`MANUAL_BOOK.md`](MANUAL_BOOK.md) (panduan tutorial langkah demi langkah).
@@ -321,12 +322,12 @@ server project-scope — setujui untuk mengaktifkannya.
 
 ## Daftar tool
 
-**93 tool** terbagi dua kelas: **READ** (selalu aktif) dan **WRITE** (digerbang flag).
+**100 tool** terbagi dua kelas: **READ** (selalu aktif) dan **WRITE** (digerbang flag).
 
 ```mermaid
 pie showData
-    title Distribusi 93 tool MikroCLAW
-    "Read (selalu aktif)" : 71
+    title Distribusi 100 tool MikroCLAW
+    "Read (selalu aktif)" : 78
     "Write (digerbang)" : 22
 ```
 
@@ -347,6 +348,7 @@ Cakupan domain READ (ringkas):
 | 🔎 Keamanan & audit | `router_users`, `user_groups`, `active_sessions`, `certificates`, `ip_services` |
 | 🩺 Diagnostik | `ping`, `traceroute`, `interface_traffic_live`, `recent_logs`, `netwatch`, `check_for_updates` |
 | 🧭 Deteksi peran | `detect_roles` (klasifikasikan fungsi router dari bukti konfigurasi) |
+| 🤖 Fitur cerdas AI | `simulate_packet`, `simulate_firewall_change` (Twin) · `analyze_client_behavior` (Sentinel) · `config_snapshot`, `config_diff` (Chronicle) · `explain_incident` (Replay) · `business_report` (Concierge) |
 
 ### Read — selalu aktif
 
@@ -422,6 +424,13 @@ Cakupan domain READ (ringkas):
 | `interface_traffic_live` | `interface` | Satu sampel throughput real-time (rx/tx bps). | `POST /interface/monitor-traffic` |
 | `check_for_updates` | — | Cek update RouterOS (tidak mengubah config). | `POST /system/package/update/check-for-updates` |
 | `detect_roles` | — | **Deteksi peran perangkat** (gateway NAT, firewall, BGP/OSPF, switch/AP, BRAS, VPN, DHCP/DNS, QoS, dll) + bukti & keyakinan. | multi `GET` (introspeksi) |
+| `simulate_packet` | `src`, `dst`, `protocol`, `dst_port`, … | **Twin** — telusuri paket hipotetis menembus mangle→dst-nat→routing→filter→src-nat di atas ruleset live; lapor verdict + jejak. | multi `GET` (model murni) |
+| `simulate_firewall_change` | `src`, `dst`, `new_rule`, … | **Twin** — uji dampak satu aturan firewall baru SEBELUM diterapkan (diff verdict). | multi `GET` (model murni) |
+| `analyze_client_behavior` | `ip` (opsional) | **Sentinel** — sidik-jari perilaku per-perangkat dari conntrack; deteksi botnet IoT/miner/scan tanpa signature, berkonteks kelas perangkat. | `GET /ip/firewall/connection` + lease/arp |
+| `config_snapshot` | `label` | **Chronicle** — simpan snapshot konfigurasi relevan-keamanan (ber-hash) ke disk lokal. | multi `GET` → file lokal |
+| `config_diff` | `simpan` | **Chronicle** — diff konfigurasi live vs snapshot terakhir + penilaian risiko (user baru, port mgmt dibuka, persistensi, dll). | multi `GET` → diff |
+| `explain_incident` | `mulai_menit_lalu`, `selesai_menit_lalu` | **Replay** — rekonstruksi telemetri jendela waktu lampau (riwayat Pulse) + anomali untuk RCA "kenapa tadi lemot". | file riwayat lokal |
+| `business_report` | `plan_down_mbps`, `wan_interface`, … | **Concierge** — terjemahkan telemetri jadi sinyal bisnis RT-RW net (pelanggan, akun nganggur, pencuri bandwidth, utilisasi WAN). | multi `GET` (ppp/hotspot/queue) |
 | `rest_get` | `path` | **GET generic** ke path REST apa pun (read-only). | `GET /<path>` |
 
 Contoh `rest_get` untuk hal yang belum punya tool khusus:
@@ -461,7 +470,7 @@ menyentuh router.
 
 ## Skills (playbook orkestrasi)
 
-Selain 93 tool atomik, MikroCLAW menyertakan **Agent Skills** di
+Selain 100 tool atomik, MikroCLAW menyertakan **Agent Skills** di
 [`.claude/skills/`](.claude/skills/) — playbook yang mengoordinasikan banyak tool
 menjadi alur kerja siap pakai. Claude Code memuatnya otomatis saat frasa pemicunya
 muncul; bisa juga dipanggil eksplisit dengan `/<nama-skill>`.
@@ -475,6 +484,11 @@ muncul; bisa juga dipanggil eksplisit dengan `/<nama-skill>`.
 | `mikrotik-troubleshoot` | Diagnosa konektivitas berlapis (L1→IP→DNS→firewall). | "internet mati", "tidak bisa browsing" |
 | `mikrotik-backup-snapshot` | Backup biner + snapshot JSON konfigurasi kunci untuk diff/dokumentasi. | "backup mikrotik", "snapshot sebelum perubahan" |
 | `mikrotik-role-detect` | Deteksi & jelaskan peran perangkat (gateway/firewall/BGP/AP/BRAS/VPN/…) beserta bukti & keyakinan. | "deteksi peran mikrotik", "router ini berfungsi sebagai apa" |
+| `mikrotik-twin` 🆕 | **Simulator what-if** — telusuri nasib paket & uji aturan firewall baru sebelum diterapkan. | "kalau klien X akses Y lolos?", "simulasikan rule ini", "uji firewall sebelum pasang" |
+| `mikrotik-sentinel` 🆕 | **Deteksi perangkat terinfeksi** — botnet IoT/miner/scan dari perilaku koneksi, tanpa signature. | "ada perangkat terinfeksi?", "cek botnet", "kenapa CCTV ini aneh" |
+| `mikrotik-chronicle` 🆕 | **Mesin waktu konfigurasi** — snapshot + diff berisiko untuk deteksi perubahan/intrusi. | "apa yang berubah di config?", "deteksi perubahan tak terjadwal", "ada backdoor?" |
+| `mikrotik-replay` 🆕 | **RCA retrospektif** — jelaskan insiden masa lampau dari riwayat telemetri. | "kenapa tadi sore lemot?", "internet sempat putus jam berapa" |
+| `mikrotik-concierge` 🆕 | **Laporan bisnis** — pelanggan, akun nganggur, pencuri bandwidth, utilisasi WAN, kapan upgrade. | "laporan bisnis RT-RW net", "ada yang nyolong bandwidth?", "perlu upgrade paket?" |
 
 Semua skill **read-only secara default**; remediasi yang mengubah konfigurasi selalu
 meminta konfirmasi dan tetap butuh `MIKROCLAW_ALLOW_WRITE=true`.
@@ -684,15 +698,26 @@ MikroCLAW/
 │   ├── mikrotik-network-overview/SKILL.md
 │   ├── mikrotik-troubleshoot/SKILL.md
 │   ├── mikrotik-backup-snapshot/SKILL.md
-│   └── mikrotik-role-detect/SKILL.md
+│   ├── mikrotik-role-detect/SKILL.md
+│   ├── mikrotik-twin/SKILL.md          # 🆕 simulator what-if
+│   ├── mikrotik-sentinel/SKILL.md      # 🆕 deteksi perangkat terinfeksi
+│   ├── mikrotik-chronicle/SKILL.md     # 🆕 mesin waktu konfigurasi
+│   ├── mikrotik-replay/SKILL.md        # 🆕 RCA retrospektif
+│   └── mikrotik-concierge/SKILL.md     # 🆕 laporan bisnis
 └── src/mikroclaw/
     ├── __init__.py        # versi paket
     ├── config.py          # baca .env/env → objek Config + validasi
     ├── client.py          # client REST RouterOS v7 (async httpx)
     ├── roles.py           # classify_roles: deteksi peran dari bukti (murni)
-    ├── server.py          # FastMCP + definisi 93 tool + write-gate
+    ├── storage.py         # 🆕 helper state dir lokal (Chronicle & Replay)
+    ├── twin.py            # 🆕 Twin: engine simulator paket (murni)
+    ├── sentinel.py        # 🆕 Sentinel: sidik-jari perilaku perangkat (murni)
+    ├── chronicle.py       # 🆕 Chronicle: snapshot/diff/risiko konfigurasi (murni)
+    ├── concierge.py       # 🆕 Concierge: telemetri → sinyal bisnis (murni)
+    ├── server.py          # FastMCP + definisi 100 tool + write-gate
     └── web/               # MikroCLAW Pulse — dashboard monitoring live
         ├── poller.py      # data plane: poll bertingkat + ring-buffer + throughput + prediksi
+        ├── history.py     # 🆕 Replay: persistensi riwayat telemetri + ringkasan jendela
         ├── analyst.py     # lapis AI (Fase 2): Anthropic Messages API via httpx
         ├── actions.py     # remediasi 1-klik (Fase 3): allowlist aksi write yang aman
         ├── app.py         # Starlette + SSE + endpoint analyze/remediate + entry `mikroclaw-web`
@@ -739,6 +764,7 @@ uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(as
 
 | Versi | Sorotan |
 |---|---|
+| **v1.7.0** | **5 fitur cerdas AI** — **Twin** (simulator what-if paket: `simulate_packet`/`simulate_firewall_change`), **Sentinel** (deteksi botnet IoT/miner/scan tanpa signature: `analyze_client_behavior`), **Chronicle** (mesin waktu konfigurasi + deteksi intrusi: `config_snapshot`/`config_diff`), **Replay** (RCA retrospektif: `explain_incident`), **Concierge** (laporan bisnis RT-RW net: `business_report`) + 5 skill baru. **100 tool · 12 skill · 151 test.** |
 | **v1.6.0** | **Deteksi peran** — tool `detect_roles` (introspeksi → klasifikasi gateway/firewall/BGP/OSPF/switch/AP/BRAS/VPN/QoS/… + bukti & keyakinan) & skill `mikrotik-role-detect`. **93 tool · 7 skill.** |
 | **v1.5.0** | **Pulse Fase 3 — AI proaktif:** prediksi tren deterministik (CPU/mem/disk + ETA) & **remediasi 1-klik** ter-gate ganda (write-flag + allowlist + cocok usulan AI) lewat `POST /api/remediate`. |
 | **v1.4.0** | **Pulse Fase 2 — lapis AI Analyst** (Anthropic Messages API via httpx, read-only, output terstruktur lewat tool-use) + **Log Stream** dengan pewarnaan severity + endpoint `POST /api/analyze`. |

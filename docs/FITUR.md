@@ -6,7 +6,7 @@
 
 **Rangkuman lengkap seluruh fitur sampai versi terkini.**
 
-`v1.6.0` · 93 tool (71 read + 22 write) · 7 Agent Skills · RouterOS v7.1+ · Apache-2.0
+`v1.7.0` · 100 tool (78 read + 22 write) · 12 Agent Skills · 5 fitur cerdas AI · RouterOS v7.1+ · Apache-2.0
 
 </div>
 
@@ -33,16 +33,16 @@ flowchart LR
 
 ---
 
-## 🧩 1. MCP Server — 93 tool ber-skema (71 read + 22 write)
+## 🧩 1. MCP Server — 100 tool ber-skema (78 read + 22 write)
 
 ```mermaid
 pie showData
-    title Distribusi 93 tool
-    "Read (selalu aktif)" : 71
+    title Distribusi 100 tool
+    "Read (selalu aktif)" : 78
     "Write (digerbang)" : 22
 ```
 
-### READ (71) — selalu aktif
+### READ (78) — selalu aktif
 
 | Domain | Contoh tool |
 |---|---|
@@ -59,6 +59,7 @@ pie showData
 | Keamanan & audit | `router_users`, `active_sessions`, `certificates`, `ip_services` |
 | Diagnostik | `ping`, `traceroute`, `interface_traffic_live`, `recent_logs`, `netwatch`, `check_for_updates` |
 | **🧭 Deteksi peran** | **`detect_roles`** (lihat §4) |
+| **🤖 Fitur cerdas AI** | `simulate_packet`, `simulate_firewall_change`, `analyze_client_behavior`, `config_snapshot`, `config_diff`, `explain_incident`, `business_report` (lihat §9) |
 | Generic | `rest_get` (GET ke path REST apa pun) |
 
 ### WRITE (22) — perlu `MIKROCLAW_ALLOW_WRITE=true`
@@ -77,7 +78,7 @@ pie showData
 
 ---
 
-## 🧠 2. Agent Skills (7 playbook read-only)
+## 🧠 2. Agent Skills (12 playbook read-only)
 
 | Skill | Fungsi |
 |---|---|
@@ -88,6 +89,11 @@ pie showData
 | `mikrotik-troubleshoot` | Diagnosa konektivitas berlapis (L1→IP→DNS→firewall) |
 | `mikrotik-backup-snapshot` | Backup biner + snapshot JSON konfigurasi kunci |
 | `mikrotik-role-detect` | Deteksi & jelaskan peran perangkat + bukti & keyakinan |
+| `mikrotik-twin` 🆕 | Simulator what-if paket + uji aturan firewall sebelum diterapkan |
+| `mikrotik-sentinel` 🆕 | Deteksi perangkat terinfeksi (botnet IoT/miner/scan) tanpa signature |
+| `mikrotik-chronicle` 🆕 | Mesin waktu konfigurasi: snapshot + diff berisiko (deteksi intrusi) |
+| `mikrotik-replay` 🆕 | RCA retrospektif "kenapa tadi lemot" dari riwayat telemetri |
+| `mikrotik-concierge` 🆕 | Laporan bisnis RT-RW net (pelanggan, pencuri bandwidth, upgrade) |
 
 Terpicu otomatis oleh frasa Bahasa Indonesia, atau dipanggil eksplisit `/<nama-skill>`.
 
@@ -151,6 +157,26 @@ PPPoE/DHCP client (WAN), **DHCP server**, **DNS resolver**, web proxy, container
 
 ---
 
+## 🤖 4b. Lima fitur cerdas AI *(baru di v1.7.0)*
+
+Lapis penalaran baru yang memanfaatkan reasoning LLM (Claude) di atas engine
+**deterministik & murni** (teruji offline seperti `roles.py`). Read-only terhadap
+router; Chronicle & Replay menyimpan state di disk lokal operator
+(`MIKROCLAW_STATE_DIR`, default `~/.mikroclaw`), bukan di router.
+
+| Fitur | Tool | Apa yang dilakukan | Engine murni |
+|---|---|---|---|
+| 🧪 **Twin** | `simulate_packet`, `simulate_firewall_change` | Telusuri nasib paket hipotetis menembus mangle→dst-nat→routing→filter→src-nat; uji aturan firewall baru **sebelum** diterapkan (diff verdict). Pra-terbang yang aman. | `twin.py` |
+| 🛡️ **Sentinel** | `analyze_client_behavior` | Sidik-jari perilaku per-perangkat dari connection-tracking; deteksi botnet IoT (Telnet/Mirai), penambang kripto, bot spam, pemindaian — **tanpa signature**, berkonteks kelas perangkat (OUI). | `sentinel.py` |
+| 📜 **Chronicle** | `config_snapshot`, `config_diff` | Mesin waktu konfigurasi: snapshot kanonik ber-hash + diff dengan **penilaian risiko** (user baru, port manajemen dibuka, scheduler/script persistensi, open resolver) → deteksi perubahan tak terjadwal / intrusi. | `chronicle.py` |
+| ⏪ **Replay** | `explain_incident` | RCA retrospektif: baca riwayat telemetri yang dipersist Pulse pada jendela waktu lampau, hitung statistik + tandai anomali → jawab *"kenapa tadi sore lemot?"*. | `web/history.py` |
+| 🏪 **Concierge** | `business_report` | Terjemahkan telemetri → keputusan bisnis untuk RT-RW net/warnet: pelanggan aktif/nganggur, perangkat tak terotentikasi (pencuri bandwidth), utilisasi WAN vs kapasitas, top talkers, saran prioritas. | `concierge.py` |
+
+Masing-masing punya **Agent Skill** senama (`mikrotik-twin`, `-sentinel`,
+`-chronicle`, `-replay`, `-concierge`) yang terpicu frasa Bahasa Indonesia.
+
+---
+
 ## 🔒 5. Keamanan
 
 - **Read-only secara default** — write digerbang `MIKROCLAW_ALLOW_WRITE`.
@@ -170,12 +196,13 @@ PPPoE/DHCP client (WAN), **DHCP server**, **DNS resolver**, web proxy, container
 
 ## ✅ 7. Kualitas — test suite
 
-**96 unit test pytest, offline** (httpx di-mock, tanpa router/jaringan/biaya API):
+**151 unit test pytest, offline** (httpx di-mock, tanpa router/jaringan/biaya API):
 client REST, helper poller, prediksi & throughput, remediasi, lapis AI, endpoint Pulse,
-klasifikasi peran.
+klasifikasi peran, **+ lima fitur cerdas** (Twin packet-walk, Sentinel fingerprint,
+Chronicle snapshot/diff/risiko, Replay riwayat/anomali, Concierge sinyal bisnis).
 
 ```bash
-uv run --extra test pytest    # → 96 passed
+uv run --extra test pytest    # → 151 passed
 ```
 
 ---
@@ -184,10 +211,10 @@ uv run --extra test pytest    # → 96 passed
 
 | Berkas | Isi |
 |---|---|
-| [`README.md`](../README.md) | Ikhtisar, badge, diagram, daftar 93 tool, instalasi, riwayat versi |
+| [`README.md`](../README.md) | Ikhtisar, badge, diagram, daftar 100 tool, instalasi, riwayat versi |
 | [`MANUAL_BOOK.md`](../MANUAL_BOOK.md) | Panduan tutorial lengkap (instalasi → kesimpulan) |
 | `docs/FITUR.md` | Dokumen ini — ringkasan fitur |
-| `.claude/skills/` | Sumber 7 Agent Skills |
+| `.claude/skills/` | Sumber 12 Agent Skills |
 | `tests/` | Suite pytest offline |
 
 ---
@@ -196,6 +223,7 @@ uv run --extra test pytest    # → 96 passed
 
 | Versi | Sorotan |
 |---|---|
+| **v1.7.0** | **5 fitur cerdas AI** — Twin (simulator what-if), Sentinel (deteksi botnet/IoT), Chronicle (mesin waktu config), Replay (RCA retrospektif), Concierge (laporan bisnis) + 5 skill · **100 tool · 12 skill · 151 test** |
 | **v1.6.0** | **Deteksi peran** — tool `detect_roles` + skill `mikrotik-role-detect` |
 | v1.5.0 | Pulse **Fase 3** — prediksi tren + remediasi 1-klik |
 | v1.4.0 | Pulse **Fase 2** — AI Analyst + log stream |

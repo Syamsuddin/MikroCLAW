@@ -10,9 +10,12 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from . import chronicle, concierge, sentinel, twin
 from .client import RouterOSClient, RouterOSError
 from .config import Config
 from .roles import classify_roles
+from .storage import state_dir
+from .web.history import downsample, read_history, summarize_window
 
 mcp = FastMCP("mikroclaw")
 
@@ -602,6 +605,296 @@ async def detect_roles() -> Any:
         "queue_tree": await _safe_get("/queue/tree"),
     }
     return classify_roles(ev)
+
+
+# ---------------------------------------------------------------------------
+# READ — fitur cerdas (Twin · Sentinel · Chronicle · Replay · Concierge)
+# Semua read-only terhadap router. Chronicle & Replay menulis state ke disk
+# LOKAL operator (bukan router), jadi tetap di luar write-gate.
+# ---------------------------------------------------------------------------
+
+
+async def _twin_evidence() -> dict[str, Any]:
+    """Tarik ruleset live yang dibutuhkan simulator Twin (read-only)."""
+    return {
+        "filter": await _safe_get("/ip/firewall/filter") or [],
+        "nat": await _safe_get("/ip/firewall/nat") or [],
+        "mangle": await _safe_get("/ip/firewall/mangle") or [],
+        "routes": await _safe_get("/ip/route") or [],
+        "address_lists": await _safe_get("/ip/firewall/address-list") or [],
+        "addresses": await _safe_get("/ip/address") or [],
+    }
+
+
+@mcp.tool()
+async def simulate_packet(
+    src: str,
+    dst: str,
+    protocol: str = "tcp",
+    dst_port: str = "",
+    src_port: str = "",
+    in_interface: str = "",
+    state: str = "new",
+) -> Any:
+    """Twin — simulasikan perjalanan satu paket menembus ruleset LIVE (read-only).
+
+    Menelusuri paket hipotetis melalui alur RouterOS (mangle → dst-nat → routing →
+    filter → src-nat) tanpa menyentuh router, lalu melaporkan verdict
+    (diteruskan/drop/reject) beserta JEJAK tiap tahap & aturan mana yang cocok.
+    Pra-terbang untuk menjawab "kalau klien X akses Y, lolos atau diblok?".
+
+    Args:
+        src: IP sumber, mis. '192.168.88.10'.
+        dst: IP tujuan, mis. '8.8.8.8' atau IP publik router untuk uji chain input.
+        protocol: 'tcp' (default), 'udp', 'icmp', dll.
+        dst_port: port tujuan (mis. '443'); kosongkan untuk icmp.
+        src_port: port sumber (opsional).
+        in_interface: interface masuk (opsional, mis. 'ether2').
+        state: connection-state paket ('new' default, 'established', 'invalid').
+    """
+    ev = await _twin_evidence()
+    pkt = {
+        "src": src, "dst": dst, "protocol": protocol,
+        "dst_port": dst_port or None, "src_port": src_port or None,
+        "in_interface": in_interface or None, "state": state,
+    }
+    return twin.simulate_packet(ev, pkt)
+
+
+@mcp.tool()
+async def simulate_firewall_change(
+    src: str,
+    dst: str,
+    new_rule: dict[str, Any],
+    protocol: str = "tcp",
+    dst_port: str = "",
+    table: str = "filter",
+    position: int = 0,
+) -> Any:
+    """Twin — uji dampak SATU aturan firewall baru SEBELUM diterapkan (read-only).
+
+    Menyisipkan `new_rule` hipotetis ke ruleset live (hanya di model), menjalankan
+    ulang simulasi paket, lalu melaporkan apakah & bagaimana nasib paket berubah.
+    Tidak ada perubahan nyata pada router.
+
+    Args:
+        src: IP sumber paket uji.
+        dst: IP tujuan paket uji.
+        new_rule: aturan baru gaya RouterOS, mis.
+            {"chain":"forward","action":"drop","src-address":"192.168.88.10"}.
+        protocol: protokol paket uji (default 'tcp').
+        dst_port: port tujuan paket uji (opsional).
+        table: 'filter' atau 'nat' — tabel tempat aturan disisipkan.
+        position: indeks penyisipan (0 = paling atas/prioritas tertinggi).
+    """
+    ev = await _twin_evidence()
+    pkt = {"src": src, "dst": dst, "protocol": protocol, "dst_port": dst_port or None}
+    return twin.simulate_change(ev, pkt, new_rule, table=table, position=position)
+
+
+@mcp.tool()
+async def analyze_client_behavior(ip: str = "") -> Any:
+    """Sentinel — deteksi perangkat berperilaku mencurigakan dari connection-tracking.
+
+    Membangun sidik-jari perilaku tiap klien (tujuan unik, port, protokol) dari
+    `/ip/firewall/connection`, menebak kelas perangkat (kamera/IoT/ponsel/server)
+    via OUI, lalu menilai deviasi DALAM KONTEKS perangkat — menangkap botnet IoT
+    (Telnet keluar), penambang kripto, bot spam, dan pemindaian, tanpa signature.
+
+    Args:
+        ip: batasi ke satu IP klien (opsional); kosong = analisa semua klien.
+    """
+    conns = await _safe_get("/ip/firewall/connection") or []
+    leases = await _safe_get("/ip/dhcp-server/lease") or []
+    arp = await _safe_get("/ip/arp") or []
+
+    # bangun daftar klien (ip, mac, vendor, host) dari lease + arp
+    from .web.poller import _vendor  # peta OUI bersama
+
+    clients: dict[str, dict[str, Any]] = {}
+    for le in leases:
+        cip = str(le.get("active-address") or le.get("address", "")).strip()
+        mac = str(le.get("active-mac-address") or le.get("mac-address", "")).strip()
+        if cip:
+            clients[cip] = {"ip": cip, "mac": mac, "vendor": _vendor(mac),
+                            "host": le.get("host-name") or le.get("comment", "")}
+    for a in arp:
+        cip = str(a.get("address", "")).strip()
+        mac = str(a.get("mac-address", "")).strip()
+        if cip and cip not in clients:
+            clients[cip] = {"ip": cip, "mac": mac, "vendor": _vendor(mac), "host": ""}
+
+    client_list = list(clients.values())
+    if ip:
+        client_list = [c for c in client_list if c["ip"] == ip]
+    return sentinel.analyze_clients(conns, client_list)
+
+
+async def _chronicle_evidence(label: str = "") -> dict[str, Any]:
+    """Tarik menu relevan-keamanan untuk snapshot Chronicle (read-only)."""
+    ident = await _safe_get("/system/identity")
+    res = await _safe_get("/system/resource")
+
+    def _name(obj: Any, key: str) -> str:
+        row = obj[0] if isinstance(obj, list) and obj else obj
+        return str(row.get(key, "")) if isinstance(row, dict) else ""
+
+    return {
+        "identity": _name(ident, "name"),
+        "version": _name(res, "version"),
+        "label": label,
+        "filter": await _safe_get("/ip/firewall/filter") or [],
+        "nat": await _safe_get("/ip/firewall/nat") or [],
+        "services": await _safe_get("/ip/service") or [],
+        "users": await _safe_get("/user") or [],
+        "groups": await _safe_get("/user/group") or [],
+        "schedulers": await _safe_get("/system/scheduler") or [],
+        "scripts": await _safe_get("/system/script") or [],
+        "dns": await _safe_get("/ip/dns") or {},
+        "address_lists": await _safe_get("/ip/firewall/address-list") or [],
+    }
+
+
+@mcp.tool()
+async def config_snapshot(label: str = "manual") -> Any:
+    """Chronicle — ambil & simpan snapshot konfigurasi relevan-keamanan ke disk lokal.
+
+    Menormalkan firewall/NAT, service, user/grup, scheduler/script, DNS, dan
+    address-list menjadi snapshot kanonik ber-hash, lalu menyimpannya di
+    MIKROCLAW_STATE_DIR/snapshots (default ~/.mikroclaw). Bukan menulis ke router;
+    dasar untuk `config_diff` (deteksi perubahan/intrusi).
+
+    Args:
+        label: label bebas untuk snapshot (mis. 'sebelum-maintenance').
+    """
+    ev = await _chronicle_evidence(label)
+    snap = chronicle.snapshot_config(ev)
+    path = chronicle.save_snapshot(snap, state_dir("snapshots"), label=label)
+    return {
+        "ok": True, "hash": snap["hash"], "file": str(path),
+        "meta": snap["meta"],
+        "jumlah_per_bagian": {k: len(v) for k, v in snap["sections"].items()},
+        "total_snapshot": len(chronicle.list_snapshots(state_dir("snapshots"))),
+    }
+
+
+@mcp.tool()
+async def config_diff(simpan: bool = True) -> Any:
+    """Chronicle — bandingkan konfigurasi SAAT INI vs snapshot tersimpan terakhir.
+
+    Mengambil konfigurasi live, membandingkannya dengan snapshot terbaru di
+    MIKROCLAW_STATE_DIR/snapshots, lalu menilai RISIKO tiap perubahan (user baru,
+    port manajemen dibuka, scheduler/script persistensi, aturan drop dimatikan,
+    open resolver, dll). Berguna mendeteksi perubahan tak terjadwal / jejak intrusi.
+
+    Args:
+        simpan: bila True (default), simpan juga snapshot saat ini sebagai baseline baru.
+    """
+    snaps_dir = state_dir("snapshots")
+    old = chronicle.load_latest(snaps_dir)
+    ev = await _chronicle_evidence("diff")
+    new = chronicle.snapshot_config(ev)
+    if simpan:
+        chronicle.save_snapshot(new, snaps_dir, label="diff")
+    if old is None:
+        return {
+            "ok": True, "baseline_dibuat": True,
+            "pesan": "Belum ada snapshot pembanding — snapshot saat ini disimpan "
+            "sebagai baseline. Jalankan lagi nanti untuk melihat perubahan.",
+            "hash": new["hash"],
+        }
+    narrated = chronicle.narrate_diff(chronicle.diff_snapshots(old, new))
+    return {"ok": True, "baseline_ts": old.get("meta", {}).get("ts"),
+            "baseline_hash": old.get("hash"), "hash_sekarang": new["hash"], **narrated}
+
+
+@mcp.tool()
+async def explain_incident(mulai_menit_lalu: int = 60, selesai_menit_lalu: int = 0) -> Any:
+    """Replay — rekonstruksi telemetri pada jendela waktu lampau untuk RCA.
+
+    Membaca riwayat yang dipersist Pulse (MIKROCLAW_STATE_DIR/history) pada jendela
+    [sekarang - mulai_menit_lalu, sekarang - selesai_menit_lalu], menghitung
+    statistik per-metrik (CPU/mem/RTT/conntrack/drops/throughput/klien) dan
+    menandai anomali deterministik — bahan bagi Claude menjelaskan "kenapa tadi
+    lemot/putus". Butuh Pulse pernah berjalan pada rentang itu.
+
+    Args:
+        mulai_menit_lalu: awal jendela, berapa menit ke belakang (default 60).
+        selesai_menit_lalu: akhir jendela, berapa menit ke belakang (default 0 = sekarang).
+    """
+    import time as _time
+
+    now = _time.time()
+    start = now - max(0, mulai_menit_lalu) * 60
+    end = now - max(0, selesai_menit_lalu) * 60
+    if start >= end:
+        return {"ok": False, "error": "rentang tidak valid: mulai harus lebih lama dari selesai"}
+    records = read_history(start, end)
+    summary = summarize_window(records)
+    return {
+        "ok": True,
+        "jendela": {"mulai_epoch": round(start, 1), "selesai_epoch": round(end, 1),
+                    "mulai_menit_lalu": mulai_menit_lalu, "selesai_menit_lalu": selesai_menit_lalu},
+        **summary,
+        "deret_ringkas": downsample(records, maks=60),
+    }
+
+
+@mcp.tool()
+async def business_report(
+    plan_down_mbps: float = 0.0, plan_up_mbps: float = 0.0, wan_interface: str = ""
+) -> Any:
+    """Concierge — terjemahkan telemetri jaringan menjadi sinyal bisnis (read-only).
+
+    Untuk operator RT-RW net / hotspot / warnet: menghitung jumlah & status
+    pelanggan PPPoE/hotspot, akun menganggur (bisa ditagih/dicabut), perangkat
+    tak terotentikasi (dugaan pencurian bandwidth), utilisasi WAN vs kapasitas
+    paket (kapan upgrade), dan top talkers — disertai saran prioritas. Claude
+    merangkainya jadi nasihat ramah-awam + estimasi monetisasi.
+
+    Args:
+        plan_down_mbps: kapasitas unduh paket WAN (Mbps) dari ISP; 0 = tebak dari link speed.
+        plan_up_mbps: kapasitas unggah paket WAN (Mbps); 0 = samakan dengan unduh.
+        wan_interface: nama interface WAN untuk sampel throughput live (opsional).
+    """
+    ev: dict[str, Any] = {
+        "ppp_secrets": await _safe_get("/ppp/secret") or [],
+        "ppp_active": await _safe_get("/ppp/active") or [],
+        "ppp_profiles": await _safe_get("/ppp/profile") or [],
+        "hotspot_users": await _safe_get("/ip/hotspot/user") or [],
+        "hotspot_active": await _safe_get("/ip/hotspot/active") or [],
+        "leases": await _safe_get("/ip/dhcp-server/lease") or [],
+        "queues": await _safe_get("/queue/simple") or [],
+    }
+    if plan_down_mbps > 0:
+        ev["plan_down_mbps"] = plan_down_mbps
+    if plan_up_mbps > 0:
+        ev["plan_up_mbps"] = plan_up_mbps
+    wan: dict[str, Any] = {}
+    if wan_interface:
+        try:
+            sample = await _ros().post(
+                "/interface/monitor-traffic", {"interface": wan_interface, "once": "true"}
+            )
+            row = sample[0] if isinstance(sample, list) and sample else sample
+            if isinstance(row, dict):
+                wan = {"rx_bps": _to_int(row.get("rx-bits-per-second")),
+                       "tx_bps": _to_int(row.get("tx-bits-per-second"))}
+        except RouterOSError:
+            pass
+        eth = await _safe_get(f"/interface/ethernet/{wan_interface}")
+        erow = eth[0] if isinstance(eth, list) and eth else eth
+        if isinstance(erow, dict):
+            wan["speed"] = erow.get("speed", "")
+    ev["wan"] = wan
+    return concierge.business_report(ev)
+
+
+def _to_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return default
 
 
 # ---------------------------------------------------------------------------

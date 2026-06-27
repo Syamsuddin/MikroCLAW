@@ -8,7 +8,7 @@
 
 **Dari instalasi hingga monitoring live — untuk pemula maupun admin jaringan.**
 
-`v1.6.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
+`v1.7.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
 
 </div>
 
@@ -60,8 +60,9 @@ flowchart LR
 
 | | Kemampuan | Penjelasan |
 |---|---|---|
-| 🧩 | **93 Tool** | 71 baca (read) + 22 ubah (write) — dari `system_resource` & `detect_roles` sampai `add_firewall_drop`. |
-| 🧠 | **7 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview, troubleshoot, backup, deteksi-peran. |
+| 🧩 | **100 Tool** | 78 baca (read) + 22 ubah (write) — dari `system_resource` & `detect_roles` sampai `add_firewall_drop`. |
+| 🧠 | **12 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview, troubleshoot, backup, deteksi-peran + 5 fitur cerdas. |
+| 🤖 | **5 Fitur Cerdas AI** | **Twin** (simulator what-if paket), **Sentinel** (deteksi botnet/IoT tanpa signature), **Chronicle** (mesin waktu config), **Replay** (RCA "kenapa tadi lemot"), **Concierge** (laporan bisnis RT-RW net). |
 | 📟 | **Pulse** | Dashboard web monitoring **live per-detik** + **AI Analyst**, **prediksi tren**, dan **remediasi 1-klik** (Fase 1–3). |
 
 > 🔒 **Aman secara default:** MikroCLAW **read-only** sampai Anda sengaja membuka gerbang write (`MIKROCLAW_ALLOW_WRITE=true`). Kredensial hanya disimpan di file `.env`, tidak pernah muncul di chat.
@@ -315,16 +316,16 @@ Installed 24 packages in 1.21s
 
 ### Verifikasi instalasi (semua jalur)
 
-Cek bahwa 93 tool ter-registrasi **tanpa perlu menyentuh router**:
+Cek bahwa 100 tool ter-registrasi **tanpa perlu menyentuh router**:
 
 ```bash
 uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(asyncio.run(mcp.list_tools())), 'tools')"
 ```
 ```
-93 tools
+100 tools
 ```
 
-✅ Muncul `93 tools` → instalasi berhasil.
+✅ Muncul `100 tools` → instalasi berhasil.
 
 ---
 
@@ -394,10 +395,10 @@ Ketik di Claude Code:
 
 ```
 MCP Servers
-  mikroclaw   ● connected   93 tools
+  mikroclaw   ● connected   100 tools
 ```
 
-✅ Status `connected` dan `93 tools` → MikroCLAW siap dipakai!
+✅ Status `connected` dan `100 tools` → MikroCLAW siap dipakai!
 
 > ❌ Status `failed`/`disconnected`? Lompat ke [Bab 12 — Troubleshooting](#-bab-12--troubleshooting).
 
@@ -962,8 +963,9 @@ flowchart LR
 
 **Yang sudah Anda bisa lakukan:**
 
-- 🔍 Memantau router lewat percakapan biasa (70 tool read).
-- 📋 Menjalankan playbook otomatis (7 Agent Skills).
+- 🔍 Memantau router lewat percakapan biasa (78 tool read).
+- 📋 Menjalankan playbook otomatis (12 Agent Skills).
+- 🤖 Memakai **5 fitur cerdas AI** — Twin (simulasi what-if), Sentinel (deteksi botnet/IoT), Chronicle (mesin waktu config), Replay (RCA retrospektif), Concierge (laporan bisnis).
 - 📟 Membuka dashboard live per-detik (Pulse).
 - 🧠 Membaca narasi & anomali dari **AI Analyst** (Pulse Fase 2).
 - 🔮 Melihat **prediksi tren** CPU/memori/disk + ETA (Pulse Fase 3).
@@ -978,9 +980,9 @@ flowchart LR
 4. Jadikan **audit keamanan** rutin bulanan.
 
 > 📚 **Referensi lanjut:**
-> - [`README.md`](README.md) — ikhtisar, daftar 93 tool lengkap, badge, arsitektur, riwayat versi.
+> - [`README.md`](README.md) — ikhtisar, daftar 100 tool lengkap, badge, arsitektur, riwayat versi.
 > - `tests/` — suite pytest offline (`uv run --extra test pytest`).
-> - `.claude/skills/` — sumber 7 Agent Skills.
+> - `.claude/skills/` — sumber 12 Agent Skills.
 
 ---
 

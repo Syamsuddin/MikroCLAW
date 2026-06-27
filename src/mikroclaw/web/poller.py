@@ -20,6 +20,7 @@ from collections import deque
 from typing import Any
 
 from ..client import RouterOSClient, RouterOSError
+from .history import HistoryWriter, build_record
 
 SPARK_LEN = 60  # jumlah sampel sparkline (~60 dtk pada cadence 1 dtk)
 
@@ -179,6 +180,10 @@ class Poller:
 
         # riwayat kasar untuk prediksi tren (Fase 3): 1 sampel / 30 dtk, ~2 jam
         self.history: deque[dict[str, float]] = deque(maxlen=240)
+
+        # Replay (Fase 4): persistensi riwayat ke disk lokal untuk RCA retrospektif.
+        # Lazy — tak menyentuh disk sampai append pertama (di loop lambat).
+        self.history_writer = HistoryWriter()
 
         self.state: dict[str, Any] = {
             "ts": 0.0,
@@ -345,6 +350,10 @@ class Poller:
 
                 self._update_certs(await self._safe_get("/certificate"))
                 self._sample_history()
+                try:  # Replay (Fase 4): rekam ke riwayat persisten; jangan ganggu loop
+                    self.history_writer.append(build_record(self.state))
+                except Exception:
+                    pass
             except Exception as exc:  # loop tak boleh mati karena satu respons aneh
                 self.state["error"] = str(exc)
             await self._notify()
