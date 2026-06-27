@@ -17,6 +17,24 @@ def _as_bool(value: str | None, default: bool) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _as_int(value: str | None, default: int) -> int:
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
+def _as_float(value: str | None, default: float) -> float:
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return float(value.strip())
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Config:
     host: str
@@ -42,11 +60,11 @@ class Config:
             host=host,
             user=os.environ.get("MIKROTIK_USER", "admin"),
             password=os.environ.get("MIKROTIK_PASSWORD", ""),
-            port=int(os.environ.get("MIKROTIK_PORT", str(default_port))),
+            port=_as_int(os.environ.get("MIKROTIK_PORT"), default_port),
             use_tls=use_tls,
             verify_tls=_as_bool(os.environ.get("MIKROTIK_VERIFY_TLS"), False),
             allow_write=_as_bool(os.environ.get("MIKROCLAW_ALLOW_WRITE"), False),
-            timeout=float(os.environ.get("MIKROTIK_TIMEOUT", "10")),
+            timeout=_as_float(os.environ.get("MIKROTIK_TIMEOUT"), 10.0),
         )
 
     @property

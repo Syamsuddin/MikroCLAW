@@ -186,7 +186,9 @@ class Poller:
             t0 = time.monotonic()
             try:
                 res = await self.ros.get("/system/resource")
-                self._update_system(res[0] if isinstance(res, list) else res)
+                obj = (res[0] if res else None) if isinstance(res, list) else res
+                if isinstance(obj, dict):
+                    self._update_system(obj)
                 ifaces = await self.ros.get("/interface")
                 self._update_interfaces(ifaces if isinstance(ifaces, list) else [])
                 try:
@@ -196,7 +198,7 @@ class Poller:
                     pass  # board tanpa sensor
                 self.state["connected"] = True
                 self.state["error"] = None
-            except RouterOSError as exc:
+            except Exception as exc:  # loop tak boleh mati karena satu respons aneh
                 self.state["connected"] = False
                 self.state["error"] = str(exc)
             await self._notify()
@@ -219,7 +221,7 @@ class Poller:
                 self._update_clients(leases, arp, ppp, hotspot, wifi, queues)
                 self._update_firewall(fw)
                 await self._update_conntrack()
-            except RouterOSError as exc:
+            except Exception as exc:  # loop tak boleh mati karena satu respons aneh
                 self.state["error"] = str(exc)
             await self._notify()
             await asyncio.sleep(max(0.0, 5.0 - (time.monotonic() - t0)))
@@ -254,7 +256,7 @@ class Poller:
                 self.state["counters"]["login_sessions"] = len(sessions or [])
 
                 self._update_certs(await self._safe_get("/certificate"))
-            except RouterOSError as exc:
+            except Exception as exc:  # loop tak boleh mati karena satu respons aneh
                 self.state["error"] = str(exc)
             await self._notify()
             await asyncio.sleep(max(0.0, 30.0 - (time.monotonic() - t0)))
@@ -264,9 +266,12 @@ class Poller:
         await asyncio.sleep(3)
         while self._running:
             t0 = time.monotonic()
-            if self._gateway:
-                self.state["wan"]["gateway_ping_ms"] = await self._ping(self._gateway)
-            self.state["wan"]["internet_ping_ms"] = await self._ping("8.8.8.8")
+            try:
+                if self._gateway:
+                    self.state["wan"]["gateway_ping_ms"] = await self._ping(self._gateway)
+                self.state["wan"]["internet_ping_ms"] = await self._ping("8.8.8.8")
+            except Exception:  # jaga loop tetap hidup; kegagalan ping sudah jadi None
+                pass
             await self._notify()
             await asyncio.sleep(max(0.0, 5.0 - (time.monotonic() - t0)))
 
@@ -339,6 +344,7 @@ class Poller:
     def _update_interfaces(self, ifaces: list[dict[str, Any]]) -> None:
         now = time.monotonic()
         out: list[dict[str, Any]] = []
+        seen: set[str] = set()
         up = down = 0
         for it in ifaces:
             name = it.get("name", "")
@@ -359,6 +365,7 @@ class Poller:
                     if dtx >= 0:
                         tx_bps = int(dtx * 8 / dt)
             self._prev_if[name] = (rxb, txb, now)
+            seen.add(name)
             if not disabled:
                 if running:
                     up += 1
@@ -382,6 +389,8 @@ class Poller:
         self.state["interfaces"] = out
         self.state["counters"]["interfaces_up"] = up
         self.state["counters"]["interfaces_down"] = down
+        for stale in [k for k in self._prev_if if k not in seen]:
+            self._prev_if.pop(stale, None)
 
         if self._wan_iface:
             for o in out:
@@ -406,21 +415,18 @@ class Poller:
         def mac_key(mac: str, ip: str) -> str:
             return mac.upper() if mac else f"ip:{ip}"
 
-        for l in leases or []:
-            if not _is_true(l.get("dynamic")) and l.get("status") != "bound":
-                # lease statis yang sedang tak terpakai tetap ditampilkan bila bound
-                pass
-            if l.get("status") != "bound":
+        for lease in leases or []:
+            if lease.get("status") != "bound":
                 continue
-            ip = l.get("active-address") or l.get("address", "")
-            mac = l.get("active-mac-address") or l.get("mac-address", "")
+            ip = lease.get("active-address") or lease.get("address", "")
+            mac = lease.get("active-mac-address") or lease.get("mac-address", "")
             clients[mac_key(mac, ip)] = {
                 "ip": ip, "mac": mac,
-                "host": l.get("host-name") or l.get("comment") or "",
-                "kind": "dhcp", "iface": l.get("server", ""),
+                "host": lease.get("host-name") or lease.get("comment") or "",
+                "kind": "dhcp", "iface": lease.get("server", ""),
                 "vendor": _vendor(mac), "signal": None,
                 "rx_bps": None, "tx_bps": None, "uptime": "",
-                "info": l.get("expires-after", ""),
+                "info": lease.get("expires-after", ""),
             }
 
         for p in ppp or []:
