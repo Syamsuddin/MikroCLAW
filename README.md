@@ -597,6 +597,20 @@ print(f'{len(tools)} tools:', ', '.join(t.name for t in tools))
 "
 ```
 
+### Test suite (pytest)
+
+Tersedia unit test untuk client REST, helper poller, prediksi/throughput,
+remediasi, lapis AI, dan endpoint Pulse — semuanya **offline** (httpx di-mock,
+tanpa router/jaringan/biaya API):
+
+```bash
+uv run --extra test pytest    # memasang & menjalankan pytest (extra 'test')
+```
+
+```
+83 passed in 0.45s
+```
+
 ---
 
 ## Keamanan
@@ -656,6 +670,7 @@ MikroCLAW/
 ├── install.bat                 # launcher double-click untuk install.ps1
 ├── uninstall.ps1 / uninstall.sh# lepas registrasi MCP (opsi hapus .env/.venv)
 ├── bootstrap.ps1 / bootstrap.sh# clone + install satu baris
+├── tests/                 # unit test pytest (offline, httpx di-mock)
 ├── .claude/skills/        # Agent Skills (playbook orkestrasi tool)
 │   ├── mikrotik-health-check/SKILL.md
 │   ├── mikrotik-firewall-audit/SKILL.md
