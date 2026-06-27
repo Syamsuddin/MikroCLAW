@@ -8,7 +8,7 @@
 
 **Dari instalasi hingga monitoring live — untuk pemula maupun admin jaringan.**
 
-`v1.3.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
+`v1.4.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
 
 </div>
 
@@ -692,6 +692,45 @@ Kunjungi: **<http://127.0.0.1:8800>**
 | 🔀 **Interface matrix** | 1 dtk | throughput rx/tx live, status link, link-speed, error/drop |
 | 👥 **Klien** | 5 dtk | gabungan DHCP+PPPoE+hotspot+WiFi, tebakan vendor (OUI MAC), bandwidth per-klien |
 | 🚪 **Service terbuka** | 30 dtk | ditandai merah bila berisiko (telnet/ftp/www/api) tanpa batasan `address` |
+| 📜 **Log Stream** | 5 dtk | tail `/log` terbaru, diwarnai per severity (error/warning) |
+| 🧠 **AI Analyst** (Fase 2) | 60 dtk / on-demand | status sehat/perhatian/kritis, ringkasan, anomali, rekomendasi |
+
+### (Fase 2) Mengaktifkan lapis AI Analyst
+
+Kartu **🧠 AI Analyst** menarasikan kondisi jaringan, mendeteksi anomali tanpa ambang tetap, mengkorelasikan akar masalah, dan memberi rekomendasi — memanggil **Anthropic Messages API** langsung (read-only, hanya membaca snapshot Pulse).
+
+1. Tambahkan API key ke `.env`:
+   ```dotenv
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+2. Jalankan ulang Pulse (`uv run mikroclaw-web`). Kartu AI akan otomatis aktif.
+3. Analisis berjalan otomatis tiap **60 detik**; klik **"⟳ Analisa sekarang"** untuk memicu langsung.
+
+> Tanpa `ANTHROPIC_API_KEY`, Pulse tetap berjalan penuh — kartu AI hanya menampilkan status **"nonaktif"**.
+
+| ENV (lapis AI) | Default | Keterangan |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | *(kosong)* | Wajib agar lapis AI aktif. |
+| `MIKROCLAW_AI_MODEL` | `claude-sonnet-4-6` | Model Claude untuk analisis. |
+| `MIKROCLAW_AI_INTERVAL` | `60` | Detik antar-analisis otomatis. |
+| `MIKROCLAW_AI_MAX_TOKENS` | `2048` | Batas token output. |
+
+**Contoh hasil kartu AI Analyst:**
+
+```
+🧠 AI Analyst                                    [ perhatian ]
+Trafik WAN normal, namun firewall drops meningkat & satu interface
+penting (ether3) baru saja down.
+
+⚠ ether3 down            Interface uplink ke switch lantai-2 tidak running.
+⚠ Lonjakan drops         Drop rate naik ke 45/dtk dari rata-rata <5/dtk.
+
+Rekomendasi
+• Periksa kabel/SFP pada ether3.
+• Tinjau sumber trafik yang terblokir di log firewall.
+
+claude-sonnet-4-6 · 1240+380 tok · 14:32:08
+```
 
 ### Arsitektur Pulse
 
@@ -833,7 +872,7 @@ A: Satu `.env` = satu router. Untuk banyak router, gunakan beberapa salinan fold
 A: Default-nya bind ke `127.0.0.1` (lokal saja). Jika set `0.0.0.0`, batasi dengan firewall/VPN — Pulse tidak punya autentikasi sendiri.
 
 **Q: Perlu API key Anthropic?**
-A: Untuk MCP & Pulse Fase 1: **tidak**. (Lapis AI Pulse Fase 2 akan menyusul dan baru saat itu butuh `ANTHROPIC_API_KEY`.)
+A: Untuk MCP & Pulse Fase 1 (data plane): **tidak**. Hanya **lapis AI Analyst (Pulse Fase 2)** yang butuh `ANTHROPIC_API_KEY`. Tanpa key, semua fitur lain tetap jalan dan kartu AI menampilkan "nonaktif".
 
 **Q: Bagaimana menambah tool baru?**
 A: Tambah `async def` ber-dekorator `@mcp.tool()` di `server.py`, lalu restart `/mcp`. Detail di `CLAUDE.md` & bagian *Pengembangan* di `README.md`.

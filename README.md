@@ -8,7 +8,7 @@
 
 **MCP server yang membuat Claude Code bisa mengakses, memonitor, dan mengelola perangkat MikroTik RouterOS lewat tool ber-skema — plus dashboard monitoring live "Pulse".**
 
-[![Versi](https://img.shields.io/badge/versi-v1.3.0-6c4cf0?style=flat-square)](#riwayat-versi)
+[![Versi](https://img.shields.io/badge/versi-v1.4.0-6c4cf0?style=flat-square)](#riwayat-versi)
 [![Lisensi](https://img.shields.io/badge/lisensi-Apache--2.0-1f9d55?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#prasyarat)
 [![RouterOS](https://img.shields.io/badge/RouterOS-v7.1%2B-293239?style=flat-square&logo=mikrotik&logoColor=white)](#kompatibilitas-routeros-v6-vs-v7)
@@ -42,7 +42,7 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 | ⚙️ **Installer satu-baris** | Windows (PowerShell) & macOS/Linux (bash) — pasang `uv`, dependency, `.env`, daftar MCP. |
 | 🌐 **Tanpa lock-in v7** | RouterOS v6 cukup ganti lapis transport ke API biner; daftar tool tetap. |
 
-**Versi terkini: `v1.3.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
+**Versi terkini: `v1.4.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
 ---
 
@@ -56,7 +56,7 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 6. [Menghubungkan ke Claude Code](#menghubungkan-ke-claude-code)
 7. [Daftar tool](#daftar-tool)
 8. [Skills (playbook orkestrasi)](#skills-playbook-orkestrasi)
-9. [MikroCLAW Pulse — monitoring live](#mikroclaw-pulse--laman-monitoring-live-fase-1)
+9. [MikroCLAW Pulse — monitoring live](#mikroclaw-pulse--dashboard-monitoring-live)
 10. [Contoh penggunaan](#contoh-penggunaan)
 11. [Uji manual tanpa Claude](#uji-manual-tanpa-claude)
 12. [Keamanan](#keamanan)
@@ -473,12 +473,19 @@ muncul; bisa juga dipanggil eksplisit dengan `/<nama-skill>`.
 Semua skill **read-only secara default**; remediasi yang mengubah konfigurasi selalu
 meminta konfirmasi dan tetap butuh `MIKROCLAW_ALLOW_WRITE=true`.
 
-## MikroCLAW Pulse — laman monitoring live (Fase 1)
+## MikroCLAW Pulse — dashboard monitoring live
 
 Selain MCP server, MikroCLAW menyertakan **Pulse**: laman web monitoring yang
-memperbarui indikator **per detik** lewat Server-Sent Events. Fase 1 adalah *data
-plane* murni — **read-only**, tanpa dependency baru (memakai Starlette + uvicorn
-yang sudah ikut `mcp`), belum ada lapis kecerdasan LLM (menyusul Fase 2).
+memperbarui indikator **per detik** lewat Server-Sent Events.
+
+- **Fase 1 — data plane:** **read-only**, tanpa dependency baru (memakai Starlette +
+  uvicorn yang sudah ikut `mcp`). Memantau RouterOS bertingkat & menyusun state live.
+- **Fase 2 — lapis AI (opsional):** kartu **🧠 AI Analyst** menarasikan kondisi
+  jaringan, mendeteksi anomali tanpa ambang tetap, mengkorelasikan akar masalah, dan
+  menyarankan remediasi — memanggil **Anthropic Messages API** langsung via `httpx`
+  (tanpa SDK), output terstruktur lewat tool-use. **Tetap read-only** (hanya membaca
+  snapshot). Aktif bila `ANTHROPIC_API_KEY` di-set; tanpa itu Pulse tetap jalan dan
+  kartu AI menampilkan status "nonaktif".
 
 ```bash
 # memakai kredensial yang sama dari .env
@@ -516,6 +523,10 @@ flowchart LR
 |---|---|---|
 | `MIKROCLAW_WEB_HOST` | `127.0.0.1` | Alamat bind. Set `0.0.0.0` untuk diakses dari LAN. |
 | `MIKROCLAW_WEB_PORT` | `8800` | Port HTTP laman. |
+| `ANTHROPIC_API_KEY` | *(kosong)* | **Mengaktifkan lapis AI (Fase 2).** Tanpa ini, kartu AI tampil "nonaktif". |
+| `MIKROCLAW_AI_MODEL` | `claude-sonnet-4-6` | Model Claude untuk analisis. |
+| `MIKROCLAW_AI_INTERVAL` | `60` | Detik antar-analisis otomatis. |
+| `MIKROCLAW_AI_MAX_TOKENS` | `2048` | Batas token output analisis. |
 
 **Yang ditampilkan (semua dari tool read yang ada):**
 
@@ -529,10 +540,14 @@ flowchart LR
   OUI MAC, dan bandwidth per-klien bila ada simple queue yang cocok.
 - **Service terbuka:** ditandai merah bila berisiko (telnet/ftp/www/api) tanpa
   batasan `address`.
+- **Log Stream:** tail `/log` terbaru dengan pewarnaan severity (error/warning).
+- **🧠 AI Analyst (Fase 2):** status sehat/perhatian/kritis, ringkasan naratif,
+  daftar anomali ber-severity, dan rekomendasi — plus tombol **"Analisa sekarang"**.
 
 Cadence bertingkat (1 dtk vitals/interface · 5 dtk klien & ping · 30 dtk WAN/
-service/sertifikat) agar tidak membebani router. Endpoint: `/` (laman),
-`/api/stream` (SSE), `/api/snapshot` (JSON sekali ambil).
+service/sertifikat · analisis AI default 60 dtk) agar tidak membebani router.
+Endpoint: `/` (laman), `/api/stream` (SSE), `/api/snapshot` (JSON sekali ambil),
+`/api/analyze` (POST — picu analisis AI sekarang).
 
 ## Contoh penggunaan
 
@@ -687,6 +702,7 @@ uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(as
 
 | Versi | Sorotan |
 |---|---|
+| **v1.4.0** | **Pulse Fase 2 — lapis AI Analyst** (Anthropic Messages API via httpx, read-only, output terstruktur lewat tool-use) + **Log Stream** dengan pewarnaan severity + endpoint `POST /api/analyze`. |
 | **v1.3.0** | **MikroCLAW Pulse** — laman web monitoring live per-detik (Starlette + SSE, read-only; tanpa dependency baru). |
 | v1.2.0 | Installer **macOS / Linux** (bash) + bootstrap satu-baris. |
 | v1.1.0 | Installer **Windows** (PowerShell) + bootstrap satu-baris. |

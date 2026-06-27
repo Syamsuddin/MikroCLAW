@@ -78,6 +78,28 @@
   .ai h3{color:var(--accent)}
   .ai .body{padding:14px;color:var(--dim);font-size:12.5px;line-height:1.6}
   .ai .soon{display:inline-block;margin-top:8px;font-size:11px;color:var(--tx);border:1px dashed #3a2f5e;padding:3px 9px;border-radius:7px}
+  .card > h3 .pill.ok{color:var(--good);border-color:#1d5040}
+  .card > h3 .pill.warn{color:var(--warn);border-color:#534420}
+  .card > h3 .pill.bad{color:var(--bad);border-color:#5a2330}
+  .btn{font:inherit;font-size:11px;cursor:pointer;background:var(--panel2);color:var(--txt);
+    border:1px solid var(--line);border-radius:8px;padding:5px 12px;transition:.2s}
+  .btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .ai-ring{color:var(--txt);font-size:13px;line-height:1.55}
+  .anom{border-left:3px solid var(--line);padding:4px 0 4px 10px;margin:8px 0;font-size:12px}
+  .anom.info{border-color:var(--accent)} .anom.warning{border-color:var(--warn)} .anom.critical{border-color:var(--bad)}
+  .anom b{color:var(--txt)}
+  .rek-h{margin-top:12px;color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px}
+  .rek{margin:5px 0 0;padding-left:18px;color:var(--txt);font-size:12px;line-height:1.55}
+  .ai-foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line)}
+  .ai-foot .m{margin-left:auto;font-size:10.5px}
+  .logbox{max-height:300px;overflow:auto}
+  .logline{display:flex;gap:10px;padding:4px 14px;border-bottom:1px solid var(--line);font-size:11.5px}
+  .logline .lt{color:var(--dim);flex:0 0 auto;font-family:var(--mono)}
+  .logline .ltp{flex:0 0 96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--dim)}
+  .logline .lm{flex:1;white-space:normal;word-break:break-word}
+  .logline.warning{background:rgba(251,191,36,.06)} .logline.warning .lm{color:var(--warn)}
+  .logline.critical{background:rgba(248,113,113,.09)} .logline.critical .lm{color:var(--bad)}
   .empty{padding:18px 14px;color:var(--dim);text-align:center;font-size:12px}
   footer{padding:10px 16px;color:var(--dim);font-size:11px;border-top:1px solid var(--line);display:flex;gap:14px}
   .blink{animation:bk 1s steps(2) infinite}@keyframes bk{50%{opacity:.35}}
@@ -149,14 +171,20 @@
   </div>
 
   <div class="col">
-    <!-- AI placeholder (Fase 2) -->
+    <!-- AI Analyst (Fase 2) -->
     <div class="card ai">
-      <h3>🧠 AI Analyst</h3>
+      <h3>🧠 AI Analyst <span id="ai-status" class="pill">—</span></h3>
       <div class="body">
-        Lapis kecerdasan LLM akan menarasikan kondisi jaringan, mendeteksi anomali
-        tanpa threshold, mengkorelasikan akar masalah lintas-subsistem, memprediksi,
-        dan menyarankan remediasi 1-klik.
-        <br><span class="soon">⏳ Fase 2 — segera</span>
+        <div class="empty" id="ai-empty">Menunggu analisis pertama…</div>
+        <div id="ai-content" style="display:none">
+          <div class="ai-ring" id="ai-ringkasan"></div>
+          <div id="ai-anom"></div>
+          <div id="ai-rek"></div>
+        </div>
+      </div>
+      <div class="ai-foot">
+        <button id="ai-run" class="btn">⟳ Analisa sekarang</button>
+        <span class="m dim mono" id="ai-meta"></span>
       </div>
     </div>
 
@@ -177,16 +205,16 @@
       <div class="chips" id="svc"><span class="empty">menunggu data…</span></div>
     </div>
 
-    <!-- Logs placeholder -->
+    <!-- Log Stream -->
     <div class="card">
-      <h3>📜 Log Stream <span class="pill">Fase 2</span></h3>
-      <div class="empty">Tail log + klasifikasi AI menyusul di Fase 2.</div>
+      <h3>📜 Log Stream <span class="pill" id="log-pill">—</span></h3>
+      <div class="logbox" id="log-body"><div class="empty">menunggu log…</div></div>
     </div>
   </div>
 </main>
 
 <footer>
-  <span>MikroCLAW Pulse · Fase 1 (data plane)</span>
+  <span>MikroCLAW Pulse · Fase 1 (data plane) + Fase 2 (AI analyst)</span>
   <span class="dim">Read-only · update per detik via SSE</span>
   <span class="dim" id="err"></span>
 </footer>
@@ -194,6 +222,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const NA = "—";
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function fmtbps(b){
   if(b===null||b===undefined) return NA;
@@ -330,7 +359,62 @@ function render(s){
     const cls = risky&&!x.address?'bad':(x.address?'ok':'warn');
     return `<span class="chip ${cls}">${x.name}:${x.port||'?'}${x.address?' ⛓':''}</span>`;
   }).join('') : '<span class="empty">—</span>';
+
+  renderAI(s.ai);
+  renderLogs(s.logs);
 }
+
+// --- AI Analyst (Fase 2) ---
+let aiDisabled=false;
+function renderAI(ai){
+  const st=$('ai-status'), empty=$('ai-empty'), content=$('ai-content'),
+        meta=$('ai-meta'), btn=$('ai-run');
+  const reset=()=>{ content.style.display='none'; empty.style.display=''; meta.textContent=''; };
+  if(!ai){ st.textContent='—'; st.className='pill'; reset(); empty.textContent='Menunggu analisis pertama…'; aiDisabled=false; return; }
+  if(ai.enabled===false){ st.textContent='nonaktif'; st.className='pill'; reset();
+    empty.innerHTML='🔌 '+esc(ai.error||'Lapis AI nonaktif. Set ANTHROPIC_API_KEY.');
+    aiDisabled=true; btn.disabled=true; return; }
+  aiDisabled=false;
+  if(ai.ok===false){ st.textContent='error'; st.className='pill bad'; reset();
+    empty.innerHTML='⚠ '+esc(ai.error||'gagal menganalisa'); return; }
+  // sukses
+  const status=ai.status||'';
+  st.textContent=status||'—';
+  st.className='pill '+(status==='kritis'?'bad':status==='perhatian'?'warn':'ok');
+  empty.style.display='none'; content.style.display='';
+  $('ai-ringkasan').textContent=ai.ringkasan||'';
+  const anom=ai.anomali||[];
+  $('ai-anom').innerHTML = anom.map(a=>
+    `<div class="anom ${esc(a.severity||'info')}"><b>${esc(a.judul)}</b>`+
+    `<div class="dim">${esc(a.detail)}</div></div>`).join('');
+  const rek=ai.rekomendasi||[];
+  $('ai-rek').innerHTML = rek.length
+    ? '<div class="rek-h">Rekomendasi</div><ul class="rek">'+rek.map(r=>`<li>${esc(r)}</li>`).join('')+'</ul>'
+    : '';
+  const u=ai.usage||{};
+  meta.textContent = [ai.model, (u.in!=null?`${u.in}+${u.out} tok`:''),
+    (ai.ts?new Date(ai.ts*1000).toLocaleTimeString():'')].filter(Boolean).join(' · ');
+}
+
+// --- Log stream ---
+function renderLogs(logs){
+  const el=$('log-body'); logs=logs||[];
+  $('log-pill').textContent = logs.length+' baris';
+  if(!logs.length){ el.innerHTML='<div class="empty">belum ada log</div>'; return; }
+  el.innerHTML = logs.slice().reverse().map(l=>
+    `<div class="logline ${esc(l.severity||'info')}">`+
+    `<span class="lt">${esc(l.time)}</span>`+
+    `<span class="ltp">${esc(l.topics)}</span>`+
+    `<span class="lm">${esc(l.message)}</span></div>`).join('');
+}
+
+// --- tombol "Analisa sekarang" ---
+$('ai-run').addEventListener('click', async ()=>{
+  const btn=$('ai-run'); if(btn.disabled) return;
+  const label=btn.textContent; btn.disabled=true; btn.textContent='⟳ menganalisa…'; btn.classList.add('blink');
+  try{ await fetch('/api/analyze',{method:'POST'}); }catch(_){}
+  setTimeout(()=>{ btn.classList.remove('blink'); btn.textContent=label; btn.disabled=aiDisabled; }, 2000);
+});
 
 function getC(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 

@@ -67,6 +67,19 @@ def _is_true(v: Any) -> bool:
     return str(v).strip().lower() in ("true", "yes", "1")
 
 
+def _log_severity(topics: Any) -> str:
+    """Heuristik severity dari kolom `topics` RouterOS (mis. 'system,error').
+
+    RouterOS tidak punya field severity eksplisit; topik membawa petunjuknya.
+    """
+    t = str(topics or "").lower()
+    if "critical" in t or "error" in t:
+        return "critical"
+    if "warning" in t:
+        return "warning"
+    return "info"
+
+
 def _vendor(mac: str | None) -> str:
     if not mac:
         return ""

@@ -1,12 +1,15 @@
 """MikroCLAW Pulse — Starlette app + Server-Sent Events.
 
 Endpoint:
-  GET /              -> laman dashboard (static/index.html)
-  GET /api/snapshot  -> state live sekali ambil (JSON) — debugging
-  GET /api/stream    -> SSE; push state tiap kali poller memperbarui (~1 dtk)
+  GET  /              -> laman dashboard (static/index.html)
+  GET  /api/snapshot  -> state live sekali ambil (JSON) — debugging
+  GET  /api/stream    -> SSE; push state tiap kali poller memperbarui (~1 dtk)
+  POST /api/analyze   -> picu satu analisis lapis AI sekarang (Fase 2)
 
 Jalankan:  uv run mikroclaw-web   (atau)  python -m mikroclaw.web
 ENV opsional: MIKROCLAW_WEB_HOST (default 127.0.0.1), MIKROCLAW_WEB_PORT (8800).
+Lapis AI (Fase 2, opsional): ANTHROPIC_API_KEY, MIKROCLAW_AI_MODEL,
+MIKROCLAW_AI_INTERVAL, MIKROCLAW_AI_MAX_TOKENS (lihat analyst.py).
 Kredensial router tetap dari .env (lihat config.py). Read-only — tak ada write.
 """
 
@@ -26,11 +29,13 @@ from sse_starlette.sse import EventSourceResponse
 
 from ..client import RouterOSClient
 from ..config import Config
+from .analyst import Analyst, AnalystConfig
 from .poller import Poller
 
 STATIC = Path(__file__).parent / "static"
 
 _poller: Poller | None = None
+_analyst: Analyst | None = None
 
 
 async def index(request: Request) -> FileResponse:
@@ -39,6 +44,14 @@ async def index(request: Request) -> FileResponse:
 
 async def snapshot(request: Request) -> JSONResponse:
     return JSONResponse(_poller.snapshot() if _poller else {"error": "poller belum siap"})
+
+
+async def analyze(request: Request) -> JSONResponse:
+    """Picu satu analisis AI sekarang. Hasil dikirim lewat SSE saat siap."""
+    if _analyst is None:
+        return JSONResponse({"ok": False, "error": "lapis AI tidak aktif"}, status_code=503)
+    _analyst.request_now()
+    return JSONResponse({"ok": True})
 
 
 async def stream(request: Request) -> EventSourceResponse:
@@ -57,13 +70,17 @@ async def stream(request: Request) -> EventSourceResponse:
 
 @asynccontextmanager
 async def lifespan(app: Starlette) -> AsyncIterator[None]:
-    global _poller
+    global _poller, _analyst
     cfg = Config.from_env()  # raise jelas bila MIKROTIK_HOST belum di-set
     _poller = Poller(RouterOSClient(cfg))
     await _poller.start()
+    _analyst = Analyst(_poller, AnalystConfig.from_env())
+    await _analyst.start()
     try:
         yield
     finally:
+        await _analyst.stop()
+        _analyst = None
         await _poller.stop()
         _poller = None
 
@@ -74,6 +91,7 @@ app = Starlette(
         Route("/", index),
         Route("/api/snapshot", snapshot),
         Route("/api/stream", stream),
+        Route("/api/analyze", analyze, methods=["POST"]),
     ],
 )
 
