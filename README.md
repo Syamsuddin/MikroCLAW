@@ -44,6 +44,9 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 
 **Versi terkini: `v1.6.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
+> 📚 **Dokumen lain:** [`docs/FITUR.md`](docs/FITUR.md) (ikhtisar fitur ringkas) ·
+> [`MANUAL_BOOK.md`](MANUAL_BOOK.md) (panduan tutorial langkah demi langkah).
+
 ---
 
 ## Daftar Isi
