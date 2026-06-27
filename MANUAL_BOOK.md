@@ -62,7 +62,7 @@ flowchart LR
 |---|---|---|
 | 🧩 | **92 Tool** | 70 baca (read) + 22 ubah (write) — dari `system_resource` sampai `add_firewall_drop`. |
 | 🧠 | **6 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview, troubleshoot, backup. |
-| 📟 | **Pulse** | Dashboard web monitoring **live per-detik** di browser. |
+| 📟 | **Pulse** | Dashboard web monitoring **live per-detik** + **AI Analyst**, **prediksi tren**, dan **remediasi 1-klik** (Fase 1–3). |
 
 > 🔒 **Aman secara default:** MikroCLAW **read-only** sampai Anda sengaja membuka gerbang write (`MIKROCLAW_ALLOW_WRITE=true`). Kredensial hanya disimpan di file `.env`, tidak pernah muncul di chat.
 
@@ -839,6 +839,9 @@ curl -s http://127.0.0.1:8800/api/snapshot | jq '.system'
 | Server tak muncul di `/mcp` | `.mcp.json` belum disetujui | Jalankan `/mcp`, setujui; pastikan `uv` di PATH. |
 | Perubahan `.env` tak terbaca | Proses lama masih jalan | Restart koneksi MCP (toggle `/mcp`). |
 | Pulse blank / `poller belum siap` | Router belum terjawab | Tunggu beberapa detik; cek `.env` & konektivitas. |
+| Kartu AI "nonaktif" | `ANTHROPIC_API_KEY` belum di-set | Isi key di `.env`, jalankan ulang Pulse. (Fitur lain tetap jalan.) |
+| Prediksi Tren belum muncul | Sampel < 3 (~90 dtk) | Biarkan Pulse berjalan; prediksi muncul setelah ≥3 sampel. |
+| Tombol remediasi ter-kunci / 403 | Write-gate mati | Set `MIKROCLAW_ALLOW_WRITE=true`, **mulai ulang Pulse**. |
 
 ### Alur diagnosa cepat
 
@@ -891,7 +894,7 @@ Lalu hapus folder repo bila tidak dipakai lagi. Di router, user `mikroclaw` bisa
 ## ❓ Bab 14 — FAQ
 
 **Q: Router saya RouterOS v6, bisa?**
-A: REST API hanya ada di v7. MikroCLAW bisa diadaptasi ke v6 dengan mengganti lapis transport `client.py` ke API biner (port 8728/8729) via library seperti `librouteros` — daftar tool tetap sama. Lihat `CLAUDE.md`.
+A: REST API hanya ada di v7. MikroCLAW bisa diadaptasi ke v6 dengan mengganti lapis transport `client.py` ke API biner (port 8728/8729) via library seperti `librouteros` — daftar tool tetap sama. Lihat bagian *Kompatibilitas RouterOS v6 vs v7* di `README.md`.
 
 **Q: Apakah password saya aman?**
 A: Ya. Password hanya ada di `.env` (di-`.gitignore`), tidak pernah dikirim ke jendela chat, dan tidak ada di `.mcp.json`.
@@ -906,10 +909,16 @@ A: Satu `.env` = satu router. Untuk banyak router, gunakan beberapa salinan fold
 A: Default-nya bind ke `127.0.0.1` (lokal saja). Jika set `0.0.0.0`, batasi dengan firewall/VPN — Pulse tidak punya autentikasi sendiri.
 
 **Q: Perlu API key Anthropic?**
-A: Untuk MCP & Pulse Fase 1 (data plane): **tidak**. Hanya **lapis AI Analyst (Pulse Fase 2)** yang butuh `ANTHROPIC_API_KEY`. Tanpa key, semua fitur lain tetap jalan dan kartu AI menampilkan "nonaktif".
+A: Untuk MCP & Pulse Fase 1 (data plane): **tidak**. Hanya **lapis AI Analyst (Pulse Fase 2)** yang butuh `ANTHROPIC_API_KEY`. Tanpa key, semua fitur lain tetap jalan (termasuk Prediksi Tren Fase 3 yang deterministik) dan kartu AI menampilkan "nonaktif".
+
+**Q: Apakah Remediasi 1-klik (Fase 3) aman?**
+A: Di-gate **tiga lapis**: (1) butuh `MIKROCLAW_ALLOW_WRITE=true`, (2) hanya aksi dari allowlist sempit (`blokir_ip`, `tambah_address_list`, `nonaktifkan_service`), dan (3) server hanya mengeksekusi aksi yang **persis** diusulkan AI. Tiap aksi diberi komentar `added-by-pulse-ai` agar mudah ditelusuri/dihapus. Default-nya mati (read-only).
+
+**Q: Apakah ada test otomatis?**
+A: Ya — ada suite **pytest offline** (httpx di-mock, tanpa router/biaya API): `uv run --extra test pytest`. Mencakup client REST, helper poller, prediksi, remediasi, lapis AI, dan endpoint Pulse.
 
 **Q: Bagaimana menambah tool baru?**
-A: Tambah `async def` ber-dekorator `@mcp.tool()` di `server.py`, lalu restart `/mcp`. Detail di `CLAUDE.md` & bagian *Pengembangan* di `README.md`.
+A: Tambah `async def` ber-dekorator `@mcp.tool()` di `server.py`, lalu restart `/mcp`. Detail di bagian *Pengembangan: menambah tool* di `README.md`.
 
 ---
 
@@ -932,6 +941,9 @@ flowchart LR
 - 🔍 Memantau router lewat percakapan biasa (70 tool read).
 - 📋 Menjalankan playbook otomatis (6 Agent Skills).
 - 📟 Membuka dashboard live per-detik (Pulse).
+- 🧠 Membaca narasi & anomali dari **AI Analyst** (Pulse Fase 2).
+- 🔮 Melihat **prediksi tren** CPU/memori/disk + ETA (Pulse Fase 3).
+- ⚡ Menjalankan **remediasi 1-klik** yang diusulkan AI, ter-gate aman (Pulse Fase 3).
 - ✍️ Mengubah konfigurasi dengan aman lewat write-gate (22 tool write).
 
 **Langkah lanjut yang direkomendasikan:**
@@ -942,8 +954,8 @@ flowchart LR
 4. Jadikan **audit keamanan** rutin bulanan.
 
 > 📚 **Referensi lanjut:**
-> - [`README.md`](README.md) — ikhtisar, daftar 92 tool lengkap, badge.
-> - [`CLAUDE.md`](CLAUDE.md) — arsitektur internal & konvensi pengembangan.
+> - [`README.md`](README.md) — ikhtisar, daftar 92 tool lengkap, badge, arsitektur, riwayat versi.
+> - `tests/` — suite pytest offline (`uv run --extra test pytest`).
 > - `.claude/skills/` — sumber 6 Agent Skills.
 
 ---
