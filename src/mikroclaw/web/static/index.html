@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MikroCLAW Pulse — Live NOC</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111824; --panel2:#0e1520; --line:#1d2838;
+    --txt:#dbe4f0; --dim:#7d8ba0; --accent:#22d3ee; --good:#34d399;
+    --warn:#fbbf24; --bad:#f87171; --tx:#a78bfa; --rx:#22d3ee;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:13px}
+  a{color:var(--accent)}
+  .mono{font-family:var(--mono)}
+  .dim{color:var(--dim)}
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;
+    background:linear-gradient(180deg,#0e1520,#0a0e14);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:10}
+  .brand{font-weight:700;letter-spacing:.5px;font-size:15px}
+  .brand b{color:var(--accent)}
+  .hmeta{color:var(--dim);font-size:12px}
+  .hmeta b{color:var(--txt);font-weight:600}
+  .status{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);box-shadow:0 0 0 0 rgba(0,0,0,0)}
+  .dot.on{background:var(--good);animation:pulse 2s infinite}
+  .dot.off{background:var(--bad)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)}70%{box-shadow:0 0 0 7px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+
+  .vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;padding:12px 16px}
+  .vital{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .vital .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .vital .v{font-size:22px;font-weight:700;margin-top:2px;font-family:var(--mono)}
+  .vital .v small{font-size:12px;color:var(--dim);font-weight:500}
+  .bar{height:5px;background:var(--line);border-radius:4px;margin-top:7px;overflow:hidden}
+  .bar > i{display:block;height:100%;border-radius:4px;background:var(--good);transition:width .4s,background .4s}
+
+  main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 20px}
+  @media(max-width:1100px){main{grid-template-columns:1fr}}
+  .col{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .card > h3{margin:0;padding:10px 14px;font-size:12px;letter-spacing:.7px;text-transform:uppercase;
+    color:var(--dim);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .card > h3 .pill{margin-left:auto;font-size:10px;padding:2px 8px;border-radius:20px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim);letter-spacing:.3px}
+  .pad{padding:12px 14px}
+
+  .wan{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;padding:12px 14px}
+  .wan .row{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--line)}
+  .wan .row b{font-family:var(--mono)}
+  .spark-wrap{grid-column:1/-1;display:flex;gap:14px;align-items:flex-end;margin-top:4px}
+  .spark-wrap .sb{flex:1}
+  .lbl{font-size:11px;color:var(--dim);display:flex;justify-content:space-between}
+  canvas{width:100%;display:block;border-radius:6px;background:var(--panel2)}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:6px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+    position:sticky;top:0;background:var(--panel)}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .scroll{max-height:340px;overflow:auto}
+  .tag{font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);color:var(--dim)}
+  .tag.dhcp{color:var(--accent);border-color:#1d4a55}
+  .tag.pppoe{color:var(--tx);border-color:#3a2f5e}
+  .tag.hotspot{color:var(--warn);border-color:#534420}
+  .tag.wifi{color:var(--good);border-color:#1d5040}
+  .up{color:var(--good)} .down{color:var(--bad)} .muted{color:var(--dim)}
+  .rxv{color:var(--rx)} .txv{color:var(--tx)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;padding:12px 14px}
+  .chip{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);font-family:var(--mono)}
+  .chip.bad{border-color:#5a2330;color:var(--bad)} .chip.warn{border-color:#534420;color:var(--warn)}
+  .chip.ok{border-color:#1d5040;color:var(--good)}
+
+  .ai{background:linear-gradient(160deg,#10182a,#0c1420);border:1px solid #1f2d44}
+  .ai h3{color:var(--accent)}
+  .ai .body{padding:14px;color:var(--dim);font-size:12.5px;line-height:1.6}
+  .ai .soon{display:inline-block;margin-top:8px;font-size:11px;color:var(--tx);border:1px dashed #3a2f5e;padding:3px 9px;border-radius:7px}
+  .empty{padding:18px 14px;color:var(--dim);text-align:center;font-size:12px}
+  footer{padding:10px 16px;color:var(--dim);font-size:11px;border-top:1px solid var(--line);display:flex;gap:14px}
+  .blink{animation:bk 1s steps(2) infinite}@keyframes bk{50%{opacity:.35}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>Mikro</b>CLAW <span class="dim">Pulse</span></div>
+  <div class="hmeta">
+    <b id="h-ident">—</b> · RouterOS <b id="h-ver">—</b> ·
+    <b id="h-board">—</b> · uptime <b id="h-uptime">—</b>
+  </div>
+  <div class="status">
+    <span id="upd" class="dim mono">—</span>
+    <span id="dot" class="dot"></span><span id="dot-txt">menghubungkan…</span>
+  </div>
+</header>
+
+<section class="vitals">
+  <div class="vital"><div class="k">CPU Load</div><div class="v"><span id="cpu">—</span><small>%</small></div><div class="bar"><i id="cpu-bar" style="width:0"></i></div></div>
+  <div class="vital"><div class="k">Memori</div><div class="v"><span id="mem">—</span><small>%</small></div><div class="bar"><i id="mem-bar" style="width:0"></i></div><div class="dim mono" id="mem-sub" style="font-size:11px;margin-top:4px">—</div></div>
+  <div class="vital"><div class="k">Disk</div><div class="v"><span id="disk">—</span><small>%</small></div><div class="bar"><i id="disk-bar" style="width:0"></i></div><div class="dim mono" id="disk-sub" style="font-size:11px;margin-top:4px">—</div></div>
+  <div class="vital"><div class="k">Suhu</div><div class="v"><span id="temp">—</span><small id="temp-u">°C</small></div><div class="dim" id="volt" style="font-size:11px;margin-top:9px">—</div></div>
+  <div class="vital"><div class="k">Klien Aktif</div><div class="v"><span id="clients-n">—</span></div><div class="dim" id="iface-sub" style="font-size:11px;margin-top:9px">—</div></div>
+  <div class="vital"><div class="k">Firewall Drops</div><div class="v"><span id="drops">—</span><small>/s</small></div><div class="dim" id="conntrack" style="font-size:11px;margin-top:9px">conntrack —</div></div>
+  <div class="vital"><div class="k">Sesi Login</div><div class="v"><span id="sessions">—</span></div><div class="dim" id="cert" style="font-size:11px;margin-top:9px">cert —</div></div>
+</section>
+
+<main>
+  <div class="col">
+    <!-- WAN -->
+    <div class="card">
+      <h3>🌐 WAN / Uplink <span class="pill" id="wan-iface">—</span></h3>
+      <div class="wan">
+        <div class="row"><span class="dim">IP WAN</span><b id="wan-ip">—</b></div>
+        <div class="row"><span class="dim">IP Publik</span><b id="wan-pub">—</b></div>
+        <div class="row"><span class="dim">DDNS</span><b id="wan-ddns">—</b></div>
+        <div class="row"><span class="dim">Gateway</span><b id="wan-gw">—</b></div>
+        <div class="row"><span class="dim">Ping Gateway</span><b id="wan-gwping">—</b></div>
+        <div class="row"><span class="dim">Ping 8.8.8.8</span><b id="wan-netping">—</b></div>
+        <div class="spark-wrap">
+          <div class="sb"><div class="lbl"><span class="rxv">▼ Download</span><span id="wan-rx" class="rxv mono">—</span></div><canvas id="c-rx" height="46"></canvas></div>
+          <div class="sb"><div class="lbl"><span class="txv">▲ Upload</span><span id="wan-tx" class="txv mono">—</span></div><canvas id="c-tx" height="46"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interface matrix -->
+    <div class="card">
+      <h3>🔌 Interface Matrix <span class="pill" id="if-pill">—</span></h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Interface</th><th>Tipe</th><th>Link</th><th class="num rxv">▼ RX</th><th class="num txv">▲ TX</th><th class="num">Err</th></tr></thead>
+          <tbody id="if-body"><tr><td colspan="6" class="empty">menunggu data…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Clients -->
+    <div class="card">
+      <h3>👥 Klien Terhubung <span class="pill" id="cl-pill">—</span></h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>IP</th><th>Host / Vendor</th><th>MAC</th><th>Jenis</th><th class="num">Sinyal</th><th class="num rxv">▼</th><th class="num txv">▲</th></tr></thead>
+          <tbody id="cl-body"><tr><td colspan="7" class="empty">menunggu data…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <!-- AI placeholder (Fase 2) -->
+    <div class="card ai">
+      <h3>🧠 AI Analyst</h3>
+      <div class="body">
+        Lapis kecerdasan LLM akan menarasikan kondisi jaringan, mendeteksi anomali
+        tanpa threshold, mengkorelasikan akar masalah lintas-subsistem, memprediksi,
+        dan menyarankan remediasi 1-klik.
+        <br><span class="soon">⏳ Fase 2 — segera</span>
+      </div>
+    </div>
+
+    <!-- CPU history -->
+    <div class="card">
+      <h3>📈 Riwayat 60 detik</h3>
+      <div class="pad">
+        <div class="lbl"><span>CPU %</span><span id="cpu-now" class="mono">—</span></div>
+        <canvas id="c-cpu" height="54"></canvas>
+        <div class="lbl" style="margin-top:10px"><span>Memori %</span><span id="mem-now" class="mono">—</span></div>
+        <canvas id="c-mem" height="54"></canvas>
+      </div>
+    </div>
+
+    <!-- Services -->
+    <div class="card">
+      <h3>🛡 Service Terbuka</h3>
+      <div class="chips" id="svc"><span class="empty">menunggu data…</span></div>
+    </div>
+
+    <!-- Logs placeholder -->
+    <div class="card">
+      <h3>📜 Log Stream <span class="pill">Fase 2</span></h3>
+      <div class="empty">Tail log + klasifikasi AI menyusul di Fase 2.</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>MikroCLAW Pulse · Fase 1 (data plane)</span>
+  <span class="dim">Read-only · update per detik via SSE</span>
+  <span class="dim" id="err"></span>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const NA = "—";
+
+function fmtbps(b){
+  if(b===null||b===undefined) return NA;
+  if(b<1000) return b+" bps";
+  if(b<1e6) return (b/1e3).toFixed(b<1e5?1:0)+" Kbps";
+  if(b<1e9) return (b/1e6).toFixed(b<1e8?1:0)+" Mbps";
+  return (b/1e9).toFixed(2)+" Gbps";
+}
+function fmtbytes(b){
+  if(!b) return "0 B";
+  const u=["B","KB","MB","GB","TB"]; let i=0;
+  while(b>=1024&&i<u.length-1){b/=1024;i++;}
+  return b.toFixed(i?1:0)+" "+u[i];
+}
+function colorFor(pct){ return pct>=90?'var(--bad)':pct>=75?'var(--warn)':'var(--good)'; }
+function setBar(barId, pct){ const e=$(barId); e.style.width=Math.min(100,pct)+'%'; e.style.background=colorFor(pct); }
+
+// --- canvas sparkline ---
+function spark(canvasId, data, color, opts={}){
+  const c=$(canvasId); if(!c) return;
+  const dpr=window.devicePixelRatio||1;
+  const w=c.clientWidth, h=c.clientHeight||46;
+  if(c.width!==w*dpr||c.height!==h*dpr){c.width=w*dpr;c.height=h*dpr;}
+  const x=c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,w,h);
+  if(!data||!data.length) return;
+  const max=opts.max||Math.max(...data,1), min=opts.min||0;
+  const n=data.length, dx=w/Math.max(1,n-1);
+  const Y=v=>h-2-((v-min)/(max-min||1))*(h-4);
+  // area
+  x.beginPath(); x.moveTo(0,h);
+  data.forEach((v,i)=>x.lineTo(i*dx,Y(v)));
+  x.lineTo((n-1)*dx,h); x.closePath();
+  x.fillStyle=color+"22"; x.fill();
+  // line
+  x.beginPath(); data.forEach((v,i)=>{const px=i*dx,py=Y(v); i?x.lineTo(px,py):x.moveTo(px,py);});
+  x.lineWidth=1.6; x.strokeStyle=color; x.stroke();
+  // last dot
+  const lx=(n-1)*dx, ly=Y(data[n-1]);
+  x.beginPath(); x.arc(lx,ly,2.4,0,7); x.fillStyle=color; x.fill();
+}
+
+function tag(kind){ const k=(kind||'').toLowerCase(); return `<span class="tag ${k}">${kind||'?'}</span>`; }
+function sigClass(s){ if(s===null||s===undefined) return ''; return s>=-67?'up':s>=-75?'':'down'; }
+
+let last=null;
+function render(s){
+  last=s;
+  // header
+  const sys=s.system||{};
+  $('h-ident').textContent = sys.identity||NA;
+  $('h-ver').textContent   = sys.version||NA;
+  $('h-board').textContent = sys.board||NA;
+  $('h-uptime').textContent= sys.uptime||NA;
+  $('upd').textContent = new Date((s.ts||0)*1000).toLocaleTimeString();
+
+  const ok=s.connected;
+  $('dot').className='dot '+(ok?'on':'off');
+  $('dot-txt').textContent= ok?'connected':'terputus';
+  $('err').textContent = s.error?('⚠ '+s.error):'';
+
+  // vitals
+  $('cpu').textContent = sys.cpu_load??NA; setBar('cpu-bar', sys.cpu_load||0);
+  $('mem').textContent = sys.mem_used_pct??NA; setBar('mem-bar', sys.mem_used_pct||0);
+  $('mem-sub').textContent = sys.mem_total?`${fmtbytes(sys.mem_used)} / ${fmtbytes(sys.mem_total)}`:NA;
+  $('disk').textContent = sys.disk_used_pct??NA; setBar('disk-bar', sys.disk_used_pct||0);
+  $('disk-sub').textContent = sys.disk_total?`${fmtbytes(sys.disk_used)} / ${fmtbytes(sys.disk_total)}`:NA;
+
+  const h=s.health||{};
+  const temp = h.temperature||h['cpu-temperature']||h['board-temperature'];
+  $('temp').textContent = temp?temp.value:NA;
+  $('temp-u').textContent = temp&&temp.unit?('°'+temp.unit):'°C';
+  const volt=h.voltage; $('volt').textContent = volt?(volt.value+' V'):'';
+
+  const cnt=s.counters||{};
+  $('clients-n').textContent = cnt.clients_total??NA;
+  $('iface-sub').textContent = `${cnt.interfaces_up||0} up · ${cnt.interfaces_down||0} down`;
+  $('drops').textContent = cnt.fw_drops_per_s??NA;
+  $('conntrack').textContent = 'conntrack '+(cnt.conntrack??NA);
+  $('sessions').textContent = cnt.login_sessions??NA;
+  $('cert').textContent = cnt.cert_nearest_days!=null?('cert '+cnt.cert_nearest_days+'h lagi'):'cert —';
+
+  // WAN
+  const w=s.wan||{};
+  $('wan-iface').textContent = w.iface||NA;
+  $('wan-ip').textContent = w.dhcp_address||NA;
+  $('wan-pub').textContent = w.public_address||NA;
+  $('wan-ddns').textContent = w.ddns||NA;
+  $('wan-gw').textContent = w.gateway||NA;
+  $('wan-gwping').innerHTML = w.gateway_ping_ms!=null?`<span class="up">${w.gateway_ping_ms} ms</span>`:'<span class="down">timeout</span>';
+  $('wan-netping').innerHTML = w.internet_ping_ms!=null?`<span class="up">${w.internet_ping_ms} ms</span>`:'<span class="down">timeout</span>';
+  $('wan-rx').textContent = fmtbps(w.rx_bps);
+  $('wan-tx').textContent = fmtbps(w.tx_bps);
+
+  const sp=s.sparklines||{};
+  spark('c-rx', sp.wan_rx, getC('--rx'));
+  spark('c-tx', sp.wan_tx, getC('--tx'));
+  spark('c-cpu', sp.cpu, getC('--good'), {max:100});
+  spark('c-mem', sp.mem, getC('--accent'), {max:100});
+  $('cpu-now').textContent=(sys.cpu_load??NA)+' %';
+  $('mem-now').textContent=(sys.mem_used_pct??NA)+' %';
+
+  // interfaces
+  const ifs=s.interfaces||[];
+  $('if-pill').textContent = ifs.length+' iface';
+  $('if-body').innerHTML = ifs.length? ifs.map(i=>{
+    const st = i.disabled?'<span class="muted">disabled</span>':(i.running?'<span class="up">● up</span>':'<span class="down">● down</span>');
+    const err = (i.rx_error+i.tx_error)>0?`<span class="down">${i.rx_error+i.tx_error}</span>`:'0';
+    const speed = i.speed?`<div class="dim" style="font-size:10px">${i.speed}</div>`:'';
+    return `<tr><td><b>${i.name}</b>${i.comment?`<div class="dim" style="font-size:10px">${i.comment}</div>`:''}</td>
+      <td class="dim">${i.type||''}</td><td>${st}${speed}</td>
+      <td class="num rxv">${fmtbps(i.rx_bps)}</td><td class="num txv">${fmtbps(i.tx_bps)}</td>
+      <td class="num">${err}</td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="empty">tak ada interface</td></tr>';
+
+  // clients
+  const cl=s.clients||[];
+  $('cl-pill').textContent = cl.length+' klien';
+  $('cl-body').innerHTML = cl.length? cl.map(c=>{
+    const sig = c.signal!=null?`<span class="${sigClass(c.signal)}">${c.signal} dBm</span>`:'<span class="muted">—</span>';
+    const ven = c.vendor?`<span class="dim"> · ${c.vendor}</span>`:'';
+    return `<tr><td class="mono">${c.ip||'—'}</td>
+      <td>${c.host||'<span class="muted">tanpa-nama</span>'}${ven}</td>
+      <td class="mono dim">${c.mac||'—'}</td>
+      <td>${tag(c.kind)}</td>
+      <td class="num">${sig}</td>
+      <td class="num rxv">${c.rx_bps!=null?fmtbps(c.rx_bps):'<span class="muted">—</span>'}</td>
+      <td class="num txv">${c.tx_bps!=null?fmtbps(c.tx_bps):'<span class="muted">—</span>'}</td></tr>`;
+  }).join('') : '<tr><td colspan="7" class="empty">tak ada klien aktif</td></tr>';
+
+  // services
+  const sv=s.services||[];
+  $('svc').innerHTML = sv.length? sv.map(x=>{
+    const risky=['telnet','ftp','www','api'].includes(x.name);
+    const cls = risky&&!x.address?'bad':(x.address?'ok':'warn');
+    return `<span class="chip ${cls}">${x.name}:${x.port||'?'}${x.address?' ⛓':''}</span>`;
+  }).join('') : '<span class="empty">—</span>';
+}
+
+function getC(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+// --- SSE connect with auto-reconnect ---
+let es;
+function connect(){
+  es = new EventSource('/api/stream');
+  es.addEventListener('state', e=>{ try{ render(JSON.parse(e.data)); }catch(_){} });
+  es.onerror = ()=>{ $('dot').className='dot off'; $('dot-txt').textContent='reconnect…'; };
+}
+connect();
+window.addEventListener('resize', ()=>{ if(last) render(last); });
+</script>
+</body>
+</html>

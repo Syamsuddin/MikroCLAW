@@ -374,6 +374,41 @@ muncul; bisa juga dipanggil eksplisit dengan `/<nama-skill>`.
 Semua skill **read-only secara default**; remediasi yang mengubah konfigurasi selalu
 meminta konfirmasi dan tetap butuh `MIKROCLAW_ALLOW_WRITE=true`.
 
+## MikroCLAW Pulse — laman monitoring live (Fase 1)
+
+Selain MCP server, MikroCLAW menyertakan **Pulse**: laman web monitoring yang
+memperbarui indikator **per detik** lewat Server-Sent Events. Fase 1 adalah *data
+plane* murni — **read-only**, tanpa dependency baru (memakai Starlette + uvicorn
+yang sudah ikut `mcp`), belum ada lapis kecerdasan LLM (menyusul Fase 2).
+
+```bash
+# memakai kredensial yang sama dari .env
+uv run mikroclaw-web                 # atau:  python -m mikroclaw.web
+# buka http://127.0.0.1:8800
+```
+
+| ENV | Default | Keterangan |
+|---|---|---|
+| `MIKROCLAW_WEB_HOST` | `127.0.0.1` | Alamat bind. Set `0.0.0.0` untuk diakses dari LAN. |
+| `MIKROCLAW_WEB_PORT` | `8800` | Port HTTP laman. |
+
+**Yang ditampilkan (semua dari tool read yang ada):**
+
+- **Vitals (1 dtk):** CPU, memori, disk, suhu/tegangan, jumlah klien, firewall
+  drops/dtk, conntrack, sesi login, sertifikat terdekat kedaluwarsa.
+- **WAN:** IP WAN/publik, DDNS, gateway, RTT ping gateway & `8.8.8.8`, sparkline
+  download/upload 60 detik.
+- **Interface matrix (1 dtk):** throughput rx/tx live (delta counter), status
+  link, link-speed, error/drop.
+- **Klien:** gabungan DHCP + PPPoE + hotspot + WiFi (sinyal), tebakan vendor dari
+  OUI MAC, dan bandwidth per-klien bila ada simple queue yang cocok.
+- **Service terbuka:** ditandai merah bila berisiko (telnet/ftp/www/api) tanpa
+  batasan `address`.
+
+Cadence bertingkat (1 dtk vitals/interface · 5 dtk klien & ping · 30 dtk WAN/
+service/sertifikat) agar tidak membebani router. Endpoint: `/` (laman),
+`/api/stream` (SSE), `/api/snapshot` (JSON sekali ambil).
+
 ## Contoh penggunaan
 
 Cukup minta dalam bahasa biasa di Claude Code:
@@ -478,7 +513,12 @@ MikroCLAW/
     ├── __init__.py        # versi paket
     ├── config.py          # baca .env/env → objek Config + validasi
     ├── client.py          # client REST RouterOS v7 (async httpx)
-    └── server.py          # FastMCP + definisi 92 tool + write-gate
+    ├── server.py          # FastMCP + definisi 92 tool + write-gate
+    └── web/               # MikroCLAW Pulse — laman monitoring live (Fase 1)
+        ├── poller.py      # data plane: poll bertingkat + ring-buffer + throughput
+        ├── app.py         # Starlette + SSE (/api/stream) + entry `mikroclaw-web`
+        └── static/
+            └── index.html # dashboard vanilla JS (tanpa dependency eksternal)
 ```
 
 ---
