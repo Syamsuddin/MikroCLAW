@@ -8,7 +8,7 @@
 
 **Dari instalasi hingga monitoring live — untuk pemula maupun admin jaringan.**
 
-`v1.4.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
+`v1.5.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
 
 </div>
 
@@ -694,6 +694,8 @@ Kunjungi: **<http://127.0.0.1:8800>**
 | 🚪 **Service terbuka** | 30 dtk | ditandai merah bila berisiko (telnet/ftp/www/api) tanpa batasan `address` |
 | 📜 **Log Stream** | 5 dtk | tail `/log` terbaru, diwarnai per severity (error/warning) |
 | 🧠 **AI Analyst** (Fase 2) | 60 dtk / on-demand | status sehat/perhatian/kritis, ringkasan, anomali, rekomendasi |
+| 🔮 **Prediksi Tren** (Fase 3) | 30 dtk | tren %/jam + ETA CPU/memori/disk (deterministik, tanpa API key) |
+| ⚡ **Remediasi 1-klik** (Fase 3) | on-demand | tombol jalankan aksi usulan AI (di-gate `ALLOW_WRITE`) |
 
 ### (Fase 2) Mengaktifkan lapis AI Analyst
 
@@ -730,6 +732,38 @@ Rekomendasi
 • Tinjau sumber trafik yang terblokir di log firewall.
 
 claude-sonnet-4-6 · 1240+380 tok · 14:32:08
+```
+
+### (Fase 3) Prediksi tren & Remediasi 1-klik
+
+**🔮 Prediksi Tren** — deterministik, **selalu aktif** (tidak butuh API key). Pulse merekam CPU/memori/disk tiap 30 detik, lalu regresi linear menghitung tren (%/jam) dan **ETA mencapai ambang**. Prediksi muncul setelah ≥3 sampel (~90 detik).
+
+```
+🔮 Prediksi Tren                                       12 sampel
+cpu    7%    ▬ +0.0%/j    stabil
+mem    61%   ▲ +1.2%/j    ≈ 28.3 jam → 95%
+disk   78%   ▲ +1.8%/j    ≈ 12.2 jam → 100%   (kuning/merah bila dekat)
+```
+
+**⚡ Remediasi 1-klik** — saat AI menemukan masalah yang bisa ditindak, kartu AI menampilkan tombol **"⚡ Jalankan"**. Diklik → dialog konfirmasi → aksi dieksekusi di router.
+
+> 🔒 **Di-gate ganda demi keamanan:**
+> 1. Butuh `MIKROCLAW_ALLOW_WRITE=true` (tombol ter-kunci bila mati), **dan**
+> 2. Server hanya mengeksekusi aksi dari **allowlist sempit** yang **persis** diusulkan AI: `blokir_ip`, `tambah_address_list`, `nonaktifkan_service`.
+>
+> Tiap aksi diberi komentar `added-by-pulse-ai` agar mudah ditelusuri/dihapus. Endpoint: `POST /api/remediate`.
+
+```mermaid
+flowchart LR
+    AI["🧠 AI usul aksi"] --> BTN["⚡ Klik Jalankan"]
+    BTN --> CONF["dialog konfirmasi"]
+    CONF --> G1{"ALLOW_WRITE?"}
+    G1 -- "tidak" --> X1["403 ditolak"]
+    G1 -- "ya" --> G2{"cocok allowlist<br/>& usulan AI?"}
+    G2 -- "tidak" --> X2["400/409 ditolak"]
+    G2 -- "ya" --> EXEC["✅ eksekusi REST<br/>+ komentar audit"]
+    classDef b fill:#10182a,stroke:#1f2d44,color:#e6edf3;
+    class AI,BTN,CONF,G1,G2,X1,X2,EXEC b;
 ```
 
 ### Arsitektur Pulse

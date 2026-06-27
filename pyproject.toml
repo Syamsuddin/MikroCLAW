@@ -1,6 +1,6 @@
 [project]
 name = "mikroclaw"
-version = "1.4.0"
+version = "1.5.0"
 description = "MCP server untuk mengakses & mengelola MikroTik RouterOS (REST API v7) dari Claude Code"
 readme = "README.md"
 requires-python = ">=3.10"

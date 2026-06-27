@@ -80,6 +80,52 @@ def _log_severity(topics: Any) -> str:
     return "info"
 
 
+def _linfit(points: list[tuple[float, float]]) -> tuple[float, float] | None:
+    """Regresi linear least-squares. Kembalikan (slope_per_detik, intercept)."""
+    n = len(points)
+    if n < 3:
+        return None
+    mx = sum(p[0] for p in points) / n
+    my = sum(p[1] for p in points) / n
+    den = sum((p[0] - mx) ** 2 for p in points)
+    if den <= 0:
+        return None
+    slope = sum((p[0] - mx) * (p[1] - my) for p in points) / den
+    return slope, my - slope * mx
+
+
+def _forecast_metric(
+    series: list[tuple[float, float]],
+    ceil: float = 100.0,
+    warn_h: float = 24.0,
+    crit_h: float = 6.0,
+) -> dict[str, Any] | None:
+    """Prediksi tren deterministik dari deret (t_detik, nilai_persen).
+
+    Hitung kemiringan (%/jam) dan ETA mencapai ambang `ceil`. Murni offline —
+    tidak butuh AI, jadi kartu Prediksi tetap jalan tanpa ANTHROPIC_API_KEY.
+    """
+    if len(series) < 3:
+        return None
+    fit = _linfit(series)
+    if not fit:
+        return None
+    pph = fit[0] * 3600.0  # persen per jam
+    cur = series[-1][1]
+    out: dict[str, Any] = {
+        "pct": round(cur, 1),
+        "slope_pph": round(pph, 2),
+        "trend": "naik" if pph > 0.1 else "turun" if pph < -0.1 else "stabil",
+        "eta_hours": None,
+        "level": "info",
+    }
+    if pph > 0.1 and cur < ceil:
+        eta = (ceil - cur) / pph
+        out["eta_hours"] = round(eta, 1)
+        out["level"] = "critical" if eta <= crit_h else "warning" if eta <= warn_h else "info"
+    return out
+
+
 def _vendor(mac: str | None) -> str:
     if not mac:
         return ""
@@ -131,6 +177,9 @@ class Poller:
             "wan_tx": deque(maxlen=SPARK_LEN),
         }
 
+        # riwayat kasar untuk prediksi tren (Fase 3): 1 sampel / 30 dtk, ~2 jam
+        self.history: deque[dict[str, float]] = deque(maxlen=240)
+
         self.state: dict[str, Any] = {
             "ts": 0.0,
             "connected": False,
@@ -158,6 +207,8 @@ class Poller:
             },
             "logs": [],   # tail /log terbaru (Fase 2)
             "ai": None,   # hasil analisis lapis AI (Fase 2)
+            "forecast": None,    # prediksi tren deterministik (Fase 3)
+            "allow_write": False,  # gerbang remediasi 1-klik (di-set oleh app)
         }
 
     # ------------------------------------------------------------------ lifecycle
@@ -188,6 +239,22 @@ class Poller:
         """Dipakai lapis AI (Fase 2) untuk menaruh hasil analisis + memberi tahu SSE."""
         self.state["ai"] = ai
         await self._notify()
+
+    def _sample_history(self) -> None:
+        """Rekam cpu/mem/disk ke riwayat kasar lalu hitung prediksi tren (Fase 3)."""
+        sysd = self.state["system"]
+        now = time.time()
+        self.history.append({
+            "t": now,
+            "cpu": _to_float(sysd.get("cpu_load")),
+            "mem": _to_float(sysd.get("mem_used_pct")),
+            "disk": _to_float(sysd.get("disk_used_pct")),
+        })
+        fc: dict[str, Any] = {"ts": now, "samples": len(self.history)}
+        for key, ceil in (("cpu", 90.0), ("mem", 95.0), ("disk", 100.0)):
+            series = [(h["t"], h[key]) for h in self.history if h.get(key) is not None]
+            fc[key] = _forecast_metric(series, ceil=ceil)
+        self.state["forecast"] = fc
 
     async def wait(self) -> None:
         """Tunggu pembaruan state berikutnya (dipakai generator SSE)."""
@@ -277,6 +344,7 @@ class Poller:
                 self.state["counters"]["login_sessions"] = len(sessions or [])
 
                 self._update_certs(await self._safe_get("/certificate"))
+                self._sample_history()
             except Exception as exc:  # loop tak boleh mati karena satu respons aneh
                 self.state["error"] = str(exc)
             await self._notify()

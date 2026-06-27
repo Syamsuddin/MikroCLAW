@@ -100,6 +100,26 @@
   .logline .lm{flex:1;white-space:normal;word-break:break-word}
   .logline.warning{background:rgba(251,191,36,.06)} .logline.warning .lm{color:var(--warn)}
   .logline.critical{background:rgba(248,113,113,.09)} .logline.critical .lm{color:var(--bad)}
+  /* Fase 3: prediksi & remediasi */
+  .fc{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12px}
+  .fc:last-child{border-bottom:0}
+  .fc .n{width:38px;color:var(--dim);text-transform:uppercase;font-size:10.5px;letter-spacing:.5px}
+  .fc .v{font-family:var(--mono);min-width:48px}
+  .fc .arrow{font-family:var(--mono);font-size:11px}
+  .fc .eta{margin-left:auto;font-size:11px;font-family:var(--mono)}
+  .pred{font-size:12px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .pred:last-child{border-bottom:0} .pred b{color:var(--txt)}
+  .rem{border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin:8px 0;background:var(--panel2)}
+  .rem .rh{display:flex;align-items:center;gap:8px}
+  .rem .rh b{color:var(--txt)}
+  .rem .ra{margin-left:auto}
+  .rem .why{color:var(--dim);font-size:11.5px;margin-top:4px}
+  .rem-gate{color:var(--warn);font-size:11px;margin-top:6px}
+  .toast{position:fixed;right:16px;bottom:16px;max-width:340px;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:11px 14px;font-size:12px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:50;opacity:0;transform:translateY(8px);transition:.25s}
+  .toast.show{opacity:1;transform:none}
+  .toast.ok{border-color:#1d5040;color:var(--good)} .toast.bad{border-color:#5a2330;color:var(--bad)}
   .empty{padding:18px 14px;color:var(--dim);text-align:center;font-size:12px}
   footer{padding:10px 16px;color:var(--dim);font-size:11px;border-top:1px solid var(--line);display:flex;gap:14px}
   .blink{animation:bk 1s steps(2) infinite}@keyframes bk{50%{opacity:.35}}
@@ -179,13 +199,21 @@
         <div id="ai-content" style="display:none">
           <div class="ai-ring" id="ai-ringkasan"></div>
           <div id="ai-anom"></div>
+          <div id="ai-pred"></div>
           <div id="ai-rek"></div>
+          <div id="ai-rem"></div>
         </div>
       </div>
       <div class="ai-foot">
         <button id="ai-run" class="btn">⟳ Analisa sekarang</button>
         <span class="m dim mono" id="ai-meta"></span>
       </div>
+    </div>
+
+    <!-- Prediksi tren deterministik (Fase 3) -->
+    <div class="card">
+      <h3>🔮 Prediksi Tren <span class="pill" id="fc-pill">—</span></h3>
+      <div class="pad" id="fc-body"><div class="empty">mengumpulkan sampel…</div></div>
     </div>
 
     <!-- CPU history -->
@@ -214,8 +242,8 @@
 </main>
 
 <footer>
-  <span>MikroCLAW Pulse · Fase 1 (data plane) + Fase 2 (AI analyst)</span>
-  <span class="dim">Read-only · update per detik via SSE</span>
+  <span>MikroCLAW Pulse · Fase 1 (data plane) + Fase 2 (AI analyst) + Fase 3 (prediksi & remediasi)</span>
+  <span class="dim">Update per detik via SSE · remediasi di-gate ALLOW_WRITE</span>
   <span class="dim" id="err"></span>
 </footer>
 
@@ -360,12 +388,36 @@ function render(s){
     return `<span class="chip ${cls}">${x.name}:${x.port||'?'}${x.address?' ⛓':''}</span>`;
   }).join('') : '<span class="empty">—</span>';
 
+  allowWrite = !!s.allow_write;
   renderAI(s.ai);
   renderLogs(s.logs);
+  renderForecast(s.forecast);
+}
+
+// --- Prediksi tren deterministik (Fase 3) ---
+function fmtEta(h){ if(h>=48) return (h/24).toFixed(1)+' hari'; if(h>=1) return h.toFixed(1)+' jam'; return Math.round(h*60)+' mnt'; }
+function fcRow(name, ceil, f){
+  if(!f) return `<div class="fc"><span class="n">${name}</span><span class="muted">—</span></div>`;
+  const col=f.level==='critical'?'var(--bad)':f.level==='warning'?'var(--warn)':'var(--good)';
+  const arr=f.trend==='naik'?'▲':f.trend==='turun'?'▼':'▬';
+  const eta=f.eta_hours!=null
+    ? `<span class="eta" style="color:${col}">≈ ${fmtEta(f.eta_hours)} → ${ceil}%</span>`
+    : '<span class="eta muted">stabil</span>';
+  return `<div class="fc"><span class="n">${name}</span>`+
+    `<span class="v" style="color:${col}">${f.pct}%</span>`+
+    `<span class="arrow" style="color:${col}">${arr} ${f.slope_pph>0?'+':''}${f.slope_pph}%/j</span>`+
+    eta+`</div>`;
+}
+function renderForecast(fc){
+  const el=$('fc-body'), pill=$('fc-pill');
+  if(!fc||!fc.samples){ pill.textContent='—'; el.innerHTML='<div class="empty">mengumpulkan sampel… (tiap 30 dtk)</div>'; return; }
+  pill.textContent=fc.samples+' sampel';
+  if(fc.samples<3){ el.innerHTML='<div class="empty">butuh ≥3 sampel (~90 dtk) untuk prediksi…</div>'; return; }
+  el.innerHTML = fcRow('cpu',90,fc.cpu)+fcRow('mem',95,fc.mem)+fcRow('disk',100,fc.disk);
 }
 
 // --- AI Analyst (Fase 2) ---
-let aiDisabled=false;
+let aiDisabled=false, allowWrite=false;
 function renderAI(ai){
   const st=$('ai-status'), empty=$('ai-empty'), content=$('ai-content'),
         meta=$('ai-meta'), btn=$('ai-run');
@@ -391,6 +443,20 @@ function renderAI(ai){
   $('ai-rek').innerHTML = rek.length
     ? '<div class="rek-h">Rekomendasi</div><ul class="rek">'+rek.map(r=>`<li>${esc(r)}</li>`).join('')+'</ul>'
     : '';
+  // prediksi naratif (Fase 3)
+  const pred=ai.prediksi||[];
+  $('ai-pred').innerHTML = pred.length
+    ? '<div class="rek-h">Prediksi</div>'+pred.map(p=>
+        `<div class="pred"><b>${esc(p.metrik)}</b> · ${esc(p.arah)} `+
+        `<span class="dim">(${esc(p.horizon)})</span><div class="dim">${esc(p.detail)}</div></div>`).join('')
+    : '';
+  // remediasi 1-klik (Fase 3)
+  const rem=ai.remediasi||[];
+  $('ai-rem').innerHTML = rem.length
+    ? '<div class="rek-h">Remediasi 1-klik</div>'+rem.map((r,i)=>remCard(r,i)).join('')+
+      (allowWrite?'':'<div class="rem-gate">🔒 Set <b>MIKROCLAW_ALLOW_WRITE=true</b> lalu mulai ulang Pulse untuk mengeksekusi.</div>')
+    : '';
+  rem.forEach((r,i)=>{ const b=$('rem-btn-'+i); if(b) b.onclick=()=>doRemediate(r,b); });
   const u=ai.usage||{};
   meta.textContent = [ai.model, (u.in!=null?`${u.in}+${u.out} tok`:''),
     (ai.ts?new Date(ai.ts*1000).toLocaleTimeString():'')].filter(Boolean).join(' · ');
@@ -406,6 +472,38 @@ function renderLogs(logs){
     `<span class="lt">${esc(l.time)}</span>`+
     `<span class="ltp">${esc(l.topics)}</span>`+
     `<span class="lm">${esc(l.message)}</span></div>`).join('');
+}
+
+// --- remediasi 1-klik (Fase 3) ---
+function remCard(r,i){
+  const p=r.parameter||{};
+  const tgt=p.address||p.service||'';
+  const extra=p.list?` → ${esc(p.list)}`:'';
+  return `<div class="rem"><div class="rh"><b>${esc(r.judul||r.tipe)}</b>`+
+    `<button id="rem-btn-${i}" class="btn ra"${allowWrite?'':' disabled'}>⚡ Jalankan</button></div>`+
+    `<div class="dim mono" style="font-size:11px">${esc(r.tipe)} ${esc(tgt)}${extra}</div>`+
+    `<div class="why">${esc(r.alasan||'')}</div></div>`;
+}
+async function doRemediate(r, btn){
+  const p=r.parameter||{};
+  const tgt=p.address||p.service||(p.list?`${p.address} → ${p.list}`:'');
+  if(!confirm(`Jalankan remediasi?\n\n${r.judul||r.tipe}\n${r.tipe}  ${tgt}\n\n⚠ Ini MENGUBAH konfigurasi router.`)) return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='⏳ …';
+  try{
+    const res=await fetch('/api/remediate',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({action:{tipe:r.tipe,parameter:p}})});
+    const d=await res.json().catch(()=>({}));
+    toast(d.pesan||d.error||(res.ok?'berhasil':'gagal'), res.ok&&d.ok);
+  }catch(_){ toast('gagal menghubungi server',false); }
+  btn.textContent=old; btn.disabled=!allowWrite;
+}
+let toastT;
+function toast(msg, ok){
+  let t=$('toast');
+  if(!t){ t=document.createElement('div'); t.id='toast'; document.body.appendChild(t); }
+  t.textContent=msg; t.className='toast '+(ok?'ok':'bad');
+  requestAnimationFrame(()=>t.classList.add('show'));
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'), 4500);
 }
 
 // --- tombol "Analisa sekarang" ---

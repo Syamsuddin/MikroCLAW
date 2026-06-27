@@ -8,7 +8,7 @@
 
 **MCP server yang membuat Claude Code bisa mengakses, memonitor, dan mengelola perangkat MikroTik RouterOS lewat tool ber-skema — plus dashboard monitoring live "Pulse".**
 
-[![Versi](https://img.shields.io/badge/versi-v1.4.0-6c4cf0?style=flat-square)](#riwayat-versi)
+[![Versi](https://img.shields.io/badge/versi-v1.5.0-6c4cf0?style=flat-square)](#riwayat-versi)
 [![Lisensi](https://img.shields.io/badge/lisensi-Apache--2.0-1f9d55?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#prasyarat)
 [![RouterOS](https://img.shields.io/badge/RouterOS-v7.1%2B-293239?style=flat-square&logo=mikrotik&logoColor=white)](#kompatibilitas-routeros-v6-vs-v7)
@@ -42,7 +42,7 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 | ⚙️ **Installer satu-baris** | Windows (PowerShell) & macOS/Linux (bash) — pasang `uv`, dependency, `.env`, daftar MCP. |
 | 🌐 **Tanpa lock-in v7** | RouterOS v6 cukup ganti lapis transport ke API biner; daftar tool tetap. |
 
-**Versi terkini: `v1.4.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
+**Versi terkini: `v1.5.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
 ---
 
@@ -486,6 +486,13 @@ memperbarui indikator **per detik** lewat Server-Sent Events.
   (tanpa SDK), output terstruktur lewat tool-use. **Tetap read-only** (hanya membaca
   snapshot). Aktif bila `ANTHROPIC_API_KEY` di-set; tanpa itu Pulse tetap jalan dan
   kartu AI menampilkan status "nonaktif".
+- **Fase 3 — AI proaktif:** **🔮 Prediksi tren deterministik** (regresi linear dari
+  riwayat → tren %/jam + ETA mencapai ambang untuk CPU/memori/disk — jalan **tanpa**
+  API key), plus **⚡ Remediasi 1-klik** yang diusulkan AI dan dieksekusi dari
+  dashboard. Remediasi **di-gate ganda**: butuh `MIKROCLAW_ALLOW_WRITE=true` **dan**
+  hanya aksi dari allowlist sempit (`blokir_ip`, `tambah_address_list`,
+  `nonaktifkan_service`) yang persis diusulkan AI — tiap aksi diberi komentar audit
+  `added-by-pulse-ai`.
 
 ```bash
 # memakai kredensial yang sama dari .env
@@ -543,11 +550,16 @@ flowchart LR
 - **Log Stream:** tail `/log` terbaru dengan pewarnaan severity (error/warning).
 - **🧠 AI Analyst (Fase 2):** status sehat/perhatian/kritis, ringkasan naratif,
   daftar anomali ber-severity, dan rekomendasi — plus tombol **"Analisa sekarang"**.
+- **🔮 Prediksi Tren (Fase 3):** tren & ETA CPU/memori/disk (deterministik,
+  tanpa API key).
+- **⚡ Remediasi 1-klik (Fase 3):** tombol eksekusi aksi yang diusulkan AI
+  (muncul ter-kunci bila write-gate mati).
 
 Cadence bertingkat (1 dtk vitals/interface · 5 dtk klien & ping · 30 dtk WAN/
-service/sertifikat · analisis AI default 60 dtk) agar tidak membebani router.
-Endpoint: `/` (laman), `/api/stream` (SSE), `/api/snapshot` (JSON sekali ambil),
-`/api/analyze` (POST — picu analisis AI sekarang).
+service/sertifikat & sampel prediksi · analisis AI default 60 dtk) agar tidak
+membebani router. Endpoint: `/` (laman), `/api/stream` (SSE), `/api/snapshot`
+(JSON sekali ambil), `/api/analyze` (POST — picu analisis AI), `/api/remediate`
+(POST — eksekusi 1 aksi remediasi; butuh `ALLOW_WRITE`).
 
 ## Contoh penggunaan
 
@@ -656,9 +668,11 @@ MikroCLAW/
     ├── config.py          # baca .env/env → objek Config + validasi
     ├── client.py          # client REST RouterOS v7 (async httpx)
     ├── server.py          # FastMCP + definisi 92 tool + write-gate
-    └── web/               # MikroCLAW Pulse — laman monitoring live (Fase 1)
-        ├── poller.py      # data plane: poll bertingkat + ring-buffer + throughput
-        ├── app.py         # Starlette + SSE (/api/stream) + entry `mikroclaw-web`
+    └── web/               # MikroCLAW Pulse — dashboard monitoring live
+        ├── poller.py      # data plane: poll bertingkat + ring-buffer + throughput + prediksi
+        ├── analyst.py     # lapis AI (Fase 2): Anthropic Messages API via httpx
+        ├── actions.py     # remediasi 1-klik (Fase 3): allowlist aksi write yang aman
+        ├── app.py         # Starlette + SSE + endpoint analyze/remediate + entry `mikroclaw-web`
         └── static/
             └── index.html # dashboard vanilla JS (tanpa dependency eksternal)
 ```
@@ -702,6 +716,7 @@ uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(as
 
 | Versi | Sorotan |
 |---|---|
+| **v1.5.0** | **Pulse Fase 3 — AI proaktif:** prediksi tren deterministik (CPU/mem/disk + ETA) & **remediasi 1-klik** ter-gate ganda (write-flag + allowlist + cocok usulan AI) lewat `POST /api/remediate`. |
 | **v1.4.0** | **Pulse Fase 2 — lapis AI Analyst** (Anthropic Messages API via httpx, read-only, output terstruktur lewat tool-use) + **Log Stream** dengan pewarnaan severity + endpoint `POST /api/analyze`. |
 | **v1.3.0** | **MikroCLAW Pulse** — laman web monitoring live per-detik (Starlette + SSE, read-only; tanpa dependency baru). |
 | v1.2.0 | Installer **macOS / Linux** (bash) + bootstrap satu-baris. |

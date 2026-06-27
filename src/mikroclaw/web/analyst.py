@@ -44,8 +44,17 @@ SYSTEM_PROMPT = (
     "- Korelasikan lintas-subsistem untuk menebak akar masalah, bukan sekadar daftar gejala.\n"
     "- Beri rekomendasi ringkas yang dapat ditindaklanjuti.\n"
     "- Tandai baris log yang paling penting.\n"
+    "- PREDIKSI: pakai field 'forecast' (tren %/jam & ETA deterministik untuk "
+    "cpu/mem/disk) untuk menarasikan ke mana arah kondisi. Hanya sebutkan prediksi "
+    "yang didukung data; jangan mengarang.\n"
+    "- REMEDIASI 1-KLIK: bila ADA masalah jelas yang bisa ditindak, usulkan aksi "
+    "HANYA dari tipe berikut: 'blokir_ip' (parameter.address), 'tambah_address_list' "
+    "(parameter.address + parameter.list), 'nonaktifkan_service' (parameter.service, "
+    "mis. telnet/ftp/www/api yang terbuka tanpa batasan). Isi parameter yang tak "
+    "dipakai dengan string kosong. KONSERVATIF: kosongkan array bila tak ada aksi "
+    "yang benar-benar perlu. Aksi tetap perlu konfirmasi manusia & write-gate.\n"
     "Bersikap tenang dan akurat: JANGAN membunyikan alarm untuk kondisi normal. "
-    "Bila semua baik, nyatakan demikian dengan status 'sehat'. "
+    "Bila semua baik, nyatakan demikian dengan status 'sehat' dan array kosong. "
     "SELALU jawab melalui tool '" + TOOL_NAME + "'. Tulis dalam Bahasa Indonesia."
 )
 
@@ -77,6 +86,50 @@ TOOL: dict[str, Any] = {
                 },
             },
             "rekomendasi": {"type": "array", "items": {"type": "string"}},
+            "prediksi": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "metrik": {"type": "string"},
+                        "arah": {"type": "string", "enum": ["naik", "turun", "stabil"]},
+                        "horizon": {"type": "string"},
+                        "detail": {"type": "string"},
+                    },
+                    "required": ["metrik", "arah", "horizon", "detail"],
+                    "additionalProperties": False,
+                },
+            },
+            "remediasi": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "tipe": {
+                            "type": "string",
+                            "enum": [
+                                "blokir_ip",
+                                "tambah_address_list",
+                                "nonaktifkan_service",
+                            ],
+                        },
+                        "judul": {"type": "string"},
+                        "alasan": {"type": "string"},
+                        "parameter": {
+                            "type": "object",
+                            "properties": {
+                                "address": {"type": "string"},
+                                "list": {"type": "string"},
+                                "service": {"type": "string"},
+                            },
+                            "required": ["address", "list", "service"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "required": ["tipe", "judul", "alasan", "parameter"],
+                    "additionalProperties": False,
+                },
+            },
             "log_penting": {
                 "type": "array",
                 "items": {
@@ -90,7 +143,10 @@ TOOL: dict[str, Any] = {
                 },
             },
         },
-        "required": ["status", "ringkasan", "anomali", "rekomendasi", "log_penting"],
+        "required": [
+            "status", "ringkasan", "anomali", "rekomendasi",
+            "prediksi", "remediasi", "log_penting",
+        ],
         "additionalProperties": False,
     },
 }
@@ -164,6 +220,7 @@ def _brief(snap: dict[str, Any]) -> dict[str, Any]:
             for k, v in health.items()
         },
         "counters": cnt,
+        "forecast": snap.get("forecast"),
         "wan": {
             k: wan.get(k)
             for k in (
@@ -320,6 +377,8 @@ class Analyst:
             "ringkasan": result.get("ringkasan", ""),
             "anomali": result.get("anomali", []),
             "rekomendasi": result.get("rekomendasi", []),
+            "prediksi": result.get("prediksi", []),
+            "remediasi": result.get("remediasi", []),
             "log_penting": result.get("log_penting", []),
             "usage": {
                 "in": usage.get("input_tokens"),
