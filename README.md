@@ -13,6 +13,10 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 - 🚧 **Operasi write digerbang** oleh flag `MIKROCLAW_ALLOW_WRITE`.
 - 🔑 **Kredensial via `.env`** — tidak muncul di chat, tidak ikut ter-commit.
 - 🧩 **92 tool** (70 read + 22 write), termasuk dua tool generic (`rest_get` / `rest_write`) untuk hal yang belum punya tool khusus.
+- 🧠 **6 Agent Skills** — playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot.
+- 📟 **MikroCLAW Pulse** — laman web monitoring **live per-detik** (read-only, via Server-Sent Events).
+
+**Versi terkini: `v1.3.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
 ---
 
@@ -26,13 +30,16 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 6. [Menghubungkan ke Claude Code](#menghubungkan-ke-claude-code)
 7. [Daftar tool](#daftar-tool)
 8. [Skills (playbook orkestrasi)](#skills-playbook-orkestrasi)
-9. [Contoh penggunaan](#contoh-penggunaan)
-10. [Uji manual tanpa Claude](#uji-manual-tanpa-claude)
-11. [Keamanan](#keamanan)
-12. [Troubleshooting](#troubleshooting)
-13. [Kompatibilitas RouterOS v6 vs v7](#kompatibilitas-routeros-v6-vs-v7)
-14. [Struktur proyek](#struktur-proyek)
-15. [Pengembangan: menambah tool](#pengembangan-menambah-tool)
+9. [MikroCLAW Pulse — monitoring live](#mikroclaw-pulse--laman-monitoring-live-fase-1)
+10. [Contoh penggunaan](#contoh-penggunaan)
+11. [Uji manual tanpa Claude](#uji-manual-tanpa-claude)
+12. [Keamanan](#keamanan)
+13. [Troubleshooting](#troubleshooting)
+14. [Kompatibilitas RouterOS v6 vs v7](#kompatibilitas-routeros-v6-vs-v7)
+15. [Struktur proyek](#struktur-proyek)
+16. [Pengembangan: menambah tool](#pengembangan-menambah-tool)
+17. [Riwayat versi](#riwayat-versi)
+18. [Lisensi](#lisensi)
 
 ---
 
@@ -498,6 +505,8 @@ MikroCLAW/
 ├── .gitignore
 ├── pyproject.toml         # metadata + dependency + entry point `mikroclaw`
 ├── README.md
+├── CLAUDE.md              # panduan repo untuk Claude Code (arsitektur & konvensi)
+├── LICENSE                # Apache License 2.0
 ├── install.ps1 / install.sh    # installer (Windows / macOS+Linux)
 ├── install.bat                 # launcher double-click untuk install.ps1
 ├── uninstall.ps1 / uninstall.sh# lepas registrasi MCP (opsi hapus .env/.venv)
@@ -553,6 +562,25 @@ terdeteksi. Verifikasi cepat:
 ```bash
 uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(asyncio.run(mcp.list_tools())), 'tools')"
 ```
+
+---
+
+## Riwayat versi
+
+| Versi | Sorotan |
+|---|---|
+| **v1.3.0** | **MikroCLAW Pulse** — laman web monitoring live per-detik (Starlette + SSE, read-only; tanpa dependency baru). |
+| v1.2.0 | Installer **macOS / Linux** (bash) + bootstrap satu-baris. |
+| v1.1.0 | Installer **Windows** (PowerShell) + bootstrap satu-baris. |
+| v1.0.0 | Rilis awal — MCP server (**92 tool**: 70 read + 22 write) + **6 Agent Skills**. |
+
+> Penomoran mengikuti urutan milestone fitur pada histori git; rincian tiap perubahan ada di `git log`.
+
+---
+
+## Lisensi
+
+Dirilis di bawah **Apache License 2.0** — lihat [`LICENSE`](LICENSE).
 
 ---
 
