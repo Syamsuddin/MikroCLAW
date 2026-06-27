@@ -123,8 +123,36 @@ Membuat sertifikat self-signed (jika belum ada):
 
 ## Instalasi
 
+### Windows (installer otomatis)
+
+Installer memasang `uv`, dependency (termasuk Python via uv bila perlu),
+menulis `.env` secara interaktif, dan mendaftarkan MCP server ke Claude Code.
+
+**Opsi A — satu baris (clone + install)** di PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Syamsuddin/MikroCLAW/main/bootstrap.ps1 | iex
+```
+
+**Opsi B — sudah punya repo:** masuk folder MikroCLAW lalu **double-click
+`install.bat`**, atau di PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+Argumen berguna: `-MikrotikHost 192.168.88.1 -MikrotikUser mikroclaw`,
+`-AllowWrite` (izinkan write), `-NonInteractive`, `-SkipMcpRegister`.
+Lepas instalasi: `.\uninstall.ps1` (tambah `-RemoveEnv` / `-RemoveVenv`).
+
+> Jika PowerShell memblokir skrip, jalankan lewat `install.bat` (sudah pakai
+> `-ExecutionPolicy Bypass`) atau jalankan PowerShell sebagai:
+> `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
+
+### Manual (Windows / macOS / Linux)
+
 ```bash
-cd /Users/syams/PROJECTS/MikroCLAW
+cd /path/ke/MikroCLAW
 cp .env.example .env          # lalu isi host + kredensial router
 uv sync                       # pasang dependency (mcp, httpx, python-dotenv)
 ```
@@ -413,6 +441,10 @@ MikroCLAW/
 ├── .gitignore
 ├── pyproject.toml         # metadata + dependency + entry point `mikroclaw`
 ├── README.md
+├── install.ps1            # installer Windows (uv + deps + .env + registrasi MCP)
+├── install.bat            # launcher double-click untuk install.ps1
+├── uninstall.ps1          # lepas registrasi MCP (opsi hapus .env/.venv)
+├── bootstrap.ps1          # clone + install satu baris (irm ... | iex)
 ├── .claude/skills/        # Agent Skills (playbook orkestrasi tool)
 │   ├── mikrotik-health-check/SKILL.md
 │   ├── mikrotik-firewall-audit/SKILL.md
