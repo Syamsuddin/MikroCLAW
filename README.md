@@ -149,6 +149,28 @@ Lepas instalasi: `.\uninstall.ps1` (tambah `-RemoveEnv` / `-RemoveVenv`).
 > `-ExecutionPolicy Bypass`) atau jalankan PowerShell sebagai:
 > `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
 
+### macOS / Linux (installer otomatis)
+
+Installer memasang `uv`, dependency (termasuk Python via uv bila perlu), menulis
+`.env` (mode `600`), dan mendaftarkan MCP server ke Claude Code.
+
+**Opsi A — satu baris (clone + install):**
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/Syamsuddin/MikroCLAW/main/bootstrap.sh | bash
+```
+
+**Opsi B — sudah punya repo:**
+
+```bash
+cd /path/ke/MikroCLAW
+./install.sh
+```
+
+Argumen berguna: `--host 192.168.88.1 --user mikroclaw`, `--allow-write`,
+`--http`, `--non-interactive`, `--skip-mcp`.
+Lepas instalasi: `./uninstall.sh` (tambah `--remove-env` / `--remove-venv`).
+
 ### Manual (Windows / macOS / Linux)
 
 ```bash
@@ -441,10 +463,10 @@ MikroCLAW/
 ├── .gitignore
 ├── pyproject.toml         # metadata + dependency + entry point `mikroclaw`
 ├── README.md
-├── install.ps1            # installer Windows (uv + deps + .env + registrasi MCP)
-├── install.bat            # launcher double-click untuk install.ps1
-├── uninstall.ps1          # lepas registrasi MCP (opsi hapus .env/.venv)
-├── bootstrap.ps1          # clone + install satu baris (irm ... | iex)
+├── install.ps1 / install.sh    # installer (Windows / macOS+Linux)
+├── install.bat                 # launcher double-click untuk install.ps1
+├── uninstall.ps1 / uninstall.sh# lepas registrasi MCP (opsi hapus .env/.venv)
+├── bootstrap.ps1 / bootstrap.sh# clone + install satu baris
 ├── .claude/skills/        # Agent Skills (playbook orkestrasi tool)
 │   ├── mikrotik-health-check/SKILL.md
 │   ├── mikrotik-firewall-audit/SKILL.md
