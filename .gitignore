@@ -1,0 +1,12 @@
+# secrets — JANGAN commit kredensial router
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+.uv/
+uv.lock

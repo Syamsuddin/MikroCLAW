@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mikroclaw": {
+      "command": "uv",
+      "args": ["run", "--directory", "/Users/syams/PROJECTS/MikroCLAW", "mikroclaw"]
+    }
+  }
+}
