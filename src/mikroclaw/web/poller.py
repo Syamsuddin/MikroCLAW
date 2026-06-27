@@ -143,6 +143,8 @@ class Poller:
                 "conntrack": None, "fw_drops_per_s": 0, "login_sessions": 0,
                 "cert_nearest_days": None,
             },
+            "logs": [],   # tail /log terbaru (Fase 2)
+            "ai": None,   # hasil analisis lapis AI (Fase 2)
         }
 
     # ------------------------------------------------------------------ lifecycle
@@ -168,6 +170,11 @@ class Poller:
     async def _notify(self) -> None:
         async with self._cond:
             self._cond.notify_all()
+
+    async def push_ai(self, ai: dict[str, Any]) -> None:
+        """Dipakai lapis AI (Fase 2) untuk menaruh hasil analisis + memberi tahu SSE."""
+        self.state["ai"] = ai
+        await self._notify()
 
     async def wait(self) -> None:
         """Tunggu pembaruan state berikutnya (dipakai generator SSE)."""
@@ -221,6 +228,7 @@ class Poller:
                 self._update_clients(leases, arp, ppp, hotspot, wifi, queues)
                 self._update_firewall(fw)
                 await self._update_conntrack()
+                self._update_logs(await self._safe_get("/log"))
             except Exception as exc:  # loop tak boleh mati karena satu respons aneh
                 self.state["error"] = str(exc)
             await self._notify()
@@ -548,6 +556,19 @@ class Poller:
                 })
         out.sort(key=lambda x: x["name"])
         self.state["services"] = out
+
+    def _update_logs(self, logs: list[dict[str, Any]]) -> None:
+        """Tail /log: ambil ~60 baris terakhir + severity heuristik dari topics."""
+        out = []
+        for e in (logs or [])[-60:]:
+            topics = e.get("topics", "")
+            out.append({
+                "time": e.get("time", ""),
+                "topics": topics,
+                "message": e.get("message", ""),
+                "severity": _log_severity(topics),
+            })
+        self.state["logs"] = out
 
     def _update_certs(self, certs: list[dict[str, Any]]) -> None:
         nearest: int | None = None
