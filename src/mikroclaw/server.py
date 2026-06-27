@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .client import RouterOSClient, RouterOSError
 from .config import Config
+from .roles import classify_roles
 
 mcp = FastMCP("mikroclaw")
 
@@ -54,6 +55,24 @@ async def _first_ok(*paths: str) -> Any:
         except RouterOSError as exc:
             last = exc
     raise last if last else RouterOSError("tidak ada path untuk dicoba")
+
+
+async def _safe_get(path: str) -> Any:
+    """GET yang menelan error (404/menu tak ada) jadi None — untuk deteksi peran."""
+    try:
+        return await _ros().get(path)
+    except RouterOSError:
+        return None
+
+
+async def _safe_any(*paths: str) -> Any:
+    """Coba beberapa path; kembalikan hasil non-error pertama, atau None."""
+    for path in paths:
+        try:
+            return await _ros().get(path)
+        except RouterOSError:
+            continue
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +543,65 @@ async def check_for_updates() -> Any:
     """
     await _ros().post("/system/package/update/check-for-updates")
     return await _ros().get("/system/package/update")
+
+
+@mcp.tool()
+async def detect_roles() -> Any:
+    """Deteksi peran/fungsi yang sedang dijalankan router (read-only).
+
+    Mengumpulkan bukti dari banyak menu RouterOS (firewall/NAT, routing BGP/OSPF,
+    bridge/VLAN, WiFi/CAPsMAN, hotspot, PPPoE, DHCP, DNS, VPN/tunnel, QoS, VRRP,
+    container, dll), lalu mengklasifikasikan peran beserta tingkat keyakinan &
+    bukti. Berguna untuk mengenali apakah perangkat berperan sebagai gateway NAT,
+    firewall, BGP/OSPF router, switch/AP, BRAS PPPoE, konsentrator VPN, dan lainnya.
+
+    Mengembalikan: identitas, versi, jumlah_peran, daftar `peran`
+    (nama/kategori/keyakinan/bukti), dan `ringkasan`.
+    """
+    ident = await _safe_get("/system/identity")
+    res = await _safe_get("/system/resource")
+
+    def _name(obj: Any, key: str) -> str:
+        row = obj[0] if isinstance(obj, list) and obj else obj
+        return str(row.get(key, "")) if isinstance(row, dict) else ""
+
+    ev: dict[str, Any] = {
+        "identity": _name(ident, "name"),
+        "version": _name(res, "version"),
+        "nat": await _safe_get("/ip/firewall/nat"),
+        "filter": await _safe_get("/ip/firewall/filter"),
+        "routes": await _safe_get("/ip/route"),
+        "bgp": await _safe_any("/routing/bgp/session", "/routing/bgp/connection", "/routing/bgp/peer"),
+        "ospf": await _safe_any("/routing/ospf/neighbor", "/routing/ospf/instance"),
+        "bridges": await _safe_get("/interface/bridge"),
+        "bridge_ports": await _safe_get("/interface/bridge/port"),
+        "vlans": await _safe_get("/interface/vlan"),
+        "wifi": await _safe_any("/interface/wifi", "/interface/wireless"),
+        "capsman": await _safe_any("/interface/wifi/capsman", "/caps-man/manager"),
+        "hotspot": await _safe_get("/ip/hotspot"),
+        "pppoe_server": await _safe_get("/interface/pppoe-server/server"),
+        "ppp_active": await _safe_get("/ppp/active"),
+        "pppoe_client": await _safe_get("/interface/pppoe-client"),
+        "dhcp_client": await _safe_get("/ip/dhcp-client"),
+        "dhcp_server": await _safe_get("/ip/dhcp-server"),
+        "dns": await _safe_get("/ip/dns"),
+        "proxy": await _safe_get("/ip/proxy"),
+        "container": await _safe_any("/container"),
+        "wireguard": await _safe_any("/interface/wireguard"),
+        "wg_peers": await _safe_any("/interface/wireguard/peers"),
+        "ipsec_peer": await _safe_get("/ip/ipsec/peer"),
+        "ipsec_active": await _safe_get("/ip/ipsec/active-peers"),
+        "l2tp_server": await _safe_get("/interface/l2tp-server/server"),
+        "sstp_server": await _safe_get("/interface/sstp-server/server"),
+        "ovpn_server": await _safe_get("/interface/ovpn-server/server"),
+        "gre": await _safe_get("/interface/gre"),
+        "eoip": await _safe_get("/interface/eoip"),
+        "ipip": await _safe_get("/interface/ipip"),
+        "vrrp": await _safe_get("/interface/vrrp"),
+        "queues_simple": await _safe_get("/queue/simple"),
+        "queue_tree": await _safe_get("/queue/tree"),
+    }
+    return classify_roles(ev)
 
 
 # ---------------------------------------------------------------------------

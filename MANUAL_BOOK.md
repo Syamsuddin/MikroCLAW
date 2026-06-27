@@ -8,7 +8,7 @@
 
 **Dari instalasi hingga monitoring live — untuk pemula maupun admin jaringan.**
 
-`v1.5.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
+`v1.6.0` · RouterOS v7.1+ · Python 3.10+ · Apache-2.0
 
 </div>
 
@@ -60,8 +60,8 @@ flowchart LR
 
 | | Kemampuan | Penjelasan |
 |---|---|---|
-| 🧩 | **92 Tool** | 70 baca (read) + 22 ubah (write) — dari `system_resource` sampai `add_firewall_drop`. |
-| 🧠 | **6 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview, troubleshoot, backup. |
+| 🧩 | **93 Tool** | 71 baca (read) + 22 ubah (write) — dari `system_resource` & `detect_roles` sampai `add_firewall_drop`. |
+| 🧠 | **7 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview, troubleshoot, backup, deteksi-peran. |
 | 📟 | **Pulse** | Dashboard web monitoring **live per-detik** + **AI Analyst**, **prediksi tren**, dan **remediasi 1-klik** (Fase 1–3). |
 
 > 🔒 **Aman secara default:** MikroCLAW **read-only** sampai Anda sengaja membuka gerbang write (`MIKROCLAW_ALLOW_WRITE=true`). Kredensial hanya disimpan di file `.env`, tidak pernah muncul di chat.
@@ -315,16 +315,16 @@ Installed 24 packages in 1.21s
 
 ### Verifikasi instalasi (semua jalur)
 
-Cek bahwa 92 tool ter-registrasi **tanpa perlu menyentuh router**:
+Cek bahwa 93 tool ter-registrasi **tanpa perlu menyentuh router**:
 
 ```bash
 uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(asyncio.run(mcp.list_tools())), 'tools')"
 ```
 ```
-92 tools
+93 tools
 ```
 
-✅ Muncul `92 tools` → instalasi berhasil.
+✅ Muncul `93 tools` → instalasi berhasil.
 
 ---
 
@@ -394,10 +394,10 @@ Ketik di Claude Code:
 
 ```
 MCP Servers
-  mikroclaw   ● connected   92 tools
+  mikroclaw   ● connected   93 tools
 ```
 
-✅ Status `connected` dan `92 tools` → MikroCLAW siap dipakai!
+✅ Status `connected` dan `93 tools` → MikroCLAW siap dipakai!
 
 > ❌ Status `failed`/`disconnected`? Lompat ke [Bab 12 — Troubleshooting](#-bab-12--troubleshooting).
 
@@ -624,6 +624,7 @@ Selalu **review** apa yang akan dilakukan Claude sebelum menyetujui.
 | `mikrotik-network-overview` | Snapshot inventaris jaringan | "overview jaringan" |
 | `mikrotik-troubleshoot` | Diagnosa konektivitas berlapis | "internet mati" |
 | `mikrotik-backup-snapshot` | Backup biner + snapshot JSON | "backup mikrotik" |
+| `mikrotik-role-detect` | Deteksi peran perangkat + bukti & keyakinan | "router ini berfungsi sebagai apa" |
 
 ### Contoh menjalankan Health Check
 
@@ -657,6 +658,29 @@ flowchart LR
 ```
 
 > 🔒 Semua skill **read-only**. Remediasi yang mengubah config selalu minta konfirmasi & tetap butuh `ALLOW_WRITE=true`.
+
+### Contoh mendeteksi peran perangkat
+
+> **Anda:** router ini berfungsi sebagai apa saja?
+
+→ Tool `detect_roles` mengintrospeksi puluhan menu RouterOS lalu mengklasifikasikan peran beserta **bukti** & **keyakinan**:
+
+```
+## Peran MikroTik — Gateway-Kantor (RouterOS 7.15.3)
+Ringkasan: edge router + firewall + gateway NAT dengan layanan LAN.
+
+| Peran                         | Kategori        | Keyakinan | Bukti                         |
+|-------------------------------|-----------------|-----------|-------------------------------|
+| Gateway internet (NAT)        | Routing & NAT   | tinggi    | 2 aturan masquerade           |
+| Port forwarding (DSTNAT)      | Routing & NAT   | tinggi    | 3 aturan dstnat               |
+| Firewall (stateful filter)    | Keamanan        | tinggi    | 24 aturan, proteksi input     |
+| Switch / bridge L2            | Switching       | tinggi    | 1 bridge, 5 port              |
+| DHCP server (LAN)             | Layanan jaringan| tinggi    | 1 DHCP server                 |
+| DNS resolver                  | Layanan jaringan| tinggi    | allow-remote-requests         |
+| VPN WireGuard                 | VPN & tunnel    | tinggi    | 1 interface, 4 peer           |
+```
+
+Cocok untuk audit cepat ("perangkat ini sebenarnya jadi apa saja?") tanpa menyisir konfigurasi manual.
 
 ---
 
@@ -939,7 +963,7 @@ flowchart LR
 **Yang sudah Anda bisa lakukan:**
 
 - 🔍 Memantau router lewat percakapan biasa (70 tool read).
-- 📋 Menjalankan playbook otomatis (6 Agent Skills).
+- 📋 Menjalankan playbook otomatis (7 Agent Skills).
 - 📟 Membuka dashboard live per-detik (Pulse).
 - 🧠 Membaca narasi & anomali dari **AI Analyst** (Pulse Fase 2).
 - 🔮 Melihat **prediksi tren** CPU/memori/disk + ETA (Pulse Fase 3).
@@ -954,9 +978,9 @@ flowchart LR
 4. Jadikan **audit keamanan** rutin bulanan.
 
 > 📚 **Referensi lanjut:**
-> - [`README.md`](README.md) — ikhtisar, daftar 92 tool lengkap, badge, arsitektur, riwayat versi.
+> - [`README.md`](README.md) — ikhtisar, daftar 93 tool lengkap, badge, arsitektur, riwayat versi.
 > - `tests/` — suite pytest offline (`uv run --extra test pytest`).
-> - `.claude/skills/` — sumber 6 Agent Skills.
+> - `.claude/skills/` — sumber 7 Agent Skills.
 
 ---
 

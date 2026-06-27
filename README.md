@@ -8,13 +8,13 @@
 
 **MCP server yang membuat Claude Code bisa mengakses, memonitor, dan mengelola perangkat MikroTik RouterOS lewat tool ber-skema — plus dashboard monitoring live "Pulse".**
 
-[![Versi](https://img.shields.io/badge/versi-v1.5.0-6c4cf0?style=flat-square)](#riwayat-versi)
+[![Versi](https://img.shields.io/badge/versi-v1.6.0-6c4cf0?style=flat-square)](#riwayat-versi)
 [![Lisensi](https://img.shields.io/badge/lisensi-Apache--2.0-1f9d55?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#prasyarat)
 [![RouterOS](https://img.shields.io/badge/RouterOS-v7.1%2B-293239?style=flat-square&logo=mikrotik&logoColor=white)](#kompatibilitas-routeros-v6-vs-v7)
 [![MCP](https://img.shields.io/badge/protokol-MCP-d97757?style=flat-square)](https://modelcontextprotocol.io)
-[![Tools](https://img.shields.io/badge/tools-92%20(70%20read%20%2B%2022%20write)-0a7ea4?style=flat-square)](#daftar-tool)
-[![Skills](https://img.shields.io/badge/agent%20skills-6-8b5cf6?style=flat-square)](#skills-playbook-orkestrasi)
+[![Tools](https://img.shields.io/badge/tools-93%20(71%20read%20%2B%2022%20write)-0a7ea4?style=flat-square)](#daftar-tool)
+[![Skills](https://img.shields.io/badge/agent%20skills-7-8b5cf6?style=flat-square)](#skills-playbook-orkestrasi)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555?style=flat-square)](#instalasi)
 [![Read-only default](https://img.shields.io/badge/default-read--only-2ea043?style=flat-square&logo=shieldsdotio&logoColor=white)](#keamanan)
 [![Bahasa](https://img.shields.io/badge/bahasa-Indonesia-e11d48?style=flat-square)](#)
@@ -36,13 +36,13 @@ tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-
 | 🔒 **Read-only secara default** | Aman untuk eksplorasi & monitoring tanpa risiko mengubah konfigurasi. |
 | 🚧 **Operasi write digerbang** | Setiap tool yang mengubah config dikunci flag `MIKROCLAW_ALLOW_WRITE`. |
 | 🔑 **Kredensial via `.env`** | Tidak pernah muncul di chat, tidak ikut ter-commit. |
-| 🧩 **92 tool ber-skema** | 70 read + 22 write, termasuk `rest_get` / `rest_write` generic untuk path apa pun. |
-| 🧠 **6 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot. |
+| 🧩 **93 tool ber-skema** | 71 read + 22 write, termasuk `detect_roles` (deteksi peran) & `rest_get`/`rest_write` generic untuk path apa pun. |
+| 🧠 **7 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot, deteksi-peran. |
 | 📟 **MikroCLAW Pulse** | Dashboard web monitoring **live per-detik** (read-only, via Server-Sent Events). |
 | ⚙️ **Installer satu-baris** | Windows (PowerShell) & macOS/Linux (bash) — pasang `uv`, dependency, `.env`, daftar MCP. |
 | 🌐 **Tanpa lock-in v7** | RouterOS v6 cukup ganti lapis transport ke API biner; daftar tool tetap. |
 
-**Versi terkini: `v1.5.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
+**Versi terkini: `v1.6.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
 ---
 
@@ -318,12 +318,12 @@ server project-scope — setujui untuk mengaktifkannya.
 
 ## Daftar tool
 
-**92 tool** terbagi dua kelas: **READ** (selalu aktif) dan **WRITE** (digerbang flag).
+**93 tool** terbagi dua kelas: **READ** (selalu aktif) dan **WRITE** (digerbang flag).
 
 ```mermaid
 pie showData
-    title Distribusi 92 tool MikroCLAW
-    "Read (selalu aktif)" : 70
+    title Distribusi 93 tool MikroCLAW
+    "Read (selalu aktif)" : 71
     "Write (digerbang)" : 22
 ```
 
@@ -343,6 +343,7 @@ Cakupan domain READ (ringkas):
 | 👥 Hotspot & AAA | `hotspot_servers`, `hotspot_active`, `hotspot_users`, `radius_servers` |
 | 🔎 Keamanan & audit | `router_users`, `user_groups`, `active_sessions`, `certificates`, `ip_services` |
 | 🩺 Diagnostik | `ping`, `traceroute`, `interface_traffic_live`, `recent_logs`, `netwatch`, `check_for_updates` |
+| 🧭 Deteksi peran | `detect_roles` (klasifikasikan fungsi router dari bukti konfigurasi) |
 
 ### Read — selalu aktif
 
@@ -417,6 +418,7 @@ Cakupan domain READ (ringkas):
 | `traceroute` | `address`, `count` (default 3) | Traceroute (jejak hop) dari router. | `POST /tool/traceroute` |
 | `interface_traffic_live` | `interface` | Satu sampel throughput real-time (rx/tx bps). | `POST /interface/monitor-traffic` |
 | `check_for_updates` | — | Cek update RouterOS (tidak mengubah config). | `POST /system/package/update/check-for-updates` |
+| `detect_roles` | — | **Deteksi peran perangkat** (gateway NAT, firewall, BGP/OSPF, switch/AP, BRAS, VPN, DHCP/DNS, QoS, dll) + bukti & keyakinan. | multi `GET` (introspeksi) |
 | `rest_get` | `path` | **GET generic** ke path REST apa pun (read-only). | `GET /<path>` |
 
 Contoh `rest_get` untuk hal yang belum punya tool khusus:
@@ -456,7 +458,7 @@ menyentuh router.
 
 ## Skills (playbook orkestrasi)
 
-Selain 92 tool atomik, MikroCLAW menyertakan **Agent Skills** di
+Selain 93 tool atomik, MikroCLAW menyertakan **Agent Skills** di
 [`.claude/skills/`](.claude/skills/) — playbook yang mengoordinasikan banyak tool
 menjadi alur kerja siap pakai. Claude Code memuatnya otomatis saat frasa pemicunya
 muncul; bisa juga dipanggil eksplisit dengan `/<nama-skill>`.
@@ -469,6 +471,7 @@ muncul; bisa juga dipanggil eksplisit dengan `/<nama-skill>`.
 | `mikrotik-network-overview` | Snapshot inventaris: WAN, subnet, interface/VLAN, routing, klien, tetangga. | "overview jaringan", "dokumentasi config" |
 | `mikrotik-troubleshoot` | Diagnosa konektivitas berlapis (L1→IP→DNS→firewall). | "internet mati", "tidak bisa browsing" |
 | `mikrotik-backup-snapshot` | Backup biner + snapshot JSON konfigurasi kunci untuk diff/dokumentasi. | "backup mikrotik", "snapshot sebelum perubahan" |
+| `mikrotik-role-detect` | Deteksi & jelaskan peran perangkat (gateway/firewall/BGP/AP/BRAS/VPN/…) beserta bukti & keyakinan. | "deteksi peran mikrotik", "router ini berfungsi sebagai apa" |
 
 Semua skill **read-only secara default**; remediasi yang mengubah konfigurasi selalu
 meminta konfirmasi dan tetap butuh `MIKROCLAW_ALLOW_WRITE=true`.
@@ -677,12 +680,14 @@ MikroCLAW/
 │   ├── mikrotik-security-audit/SKILL.md
 │   ├── mikrotik-network-overview/SKILL.md
 │   ├── mikrotik-troubleshoot/SKILL.md
-│   └── mikrotik-backup-snapshot/SKILL.md
+│   ├── mikrotik-backup-snapshot/SKILL.md
+│   └── mikrotik-role-detect/SKILL.md
 └── src/mikroclaw/
     ├── __init__.py        # versi paket
     ├── config.py          # baca .env/env → objek Config + validasi
     ├── client.py          # client REST RouterOS v7 (async httpx)
-    ├── server.py          # FastMCP + definisi 92 tool + write-gate
+    ├── roles.py           # classify_roles: deteksi peran dari bukti (murni)
+    ├── server.py          # FastMCP + definisi 93 tool + write-gate
     └── web/               # MikroCLAW Pulse — dashboard monitoring live
         ├── poller.py      # data plane: poll bertingkat + ring-buffer + throughput + prediksi
         ├── analyst.py     # lapis AI (Fase 2): Anthropic Messages API via httpx
@@ -731,6 +736,7 @@ uv run python -c "import asyncio; from mikroclaw.server import mcp; print(len(as
 
 | Versi | Sorotan |
 |---|---|
+| **v1.6.0** | **Deteksi peran** — tool `detect_roles` (introspeksi → klasifikasi gateway/firewall/BGP/OSPF/switch/AP/BRAS/VPN/QoS/… + bukti & keyakinan) & skill `mikrotik-role-detect`. **93 tool · 7 skill.** |
 | **v1.5.0** | **Pulse Fase 3 — AI proaktif:** prediksi tren deterministik (CPU/mem/disk + ETA) & **remediasi 1-klik** ter-gate ganda (write-flag + allowlist + cocok usulan AI) lewat `POST /api/remediate`. |
 | **v1.4.0** | **Pulse Fase 2 — lapis AI Analyst** (Anthropic Messages API via httpx, read-only, output terstruktur lewat tool-use) + **Log Stream** dengan pewarnaan severity + endpoint `POST /api/analyze`. |
 | **v1.3.0** | **MikroCLAW Pulse** — laman web monitoring live per-detik (Starlette + SSE, read-only; tanpa dependency baru). |
