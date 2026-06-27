@@ -10,3 +10,12 @@ dist/
 build/
 .uv/
 uv.lock
+
+# panduan internal untuk Claude Code — tidak dipublikasikan ke GitHub
+CLAUDE.md
+
+# macOS
+.DS_Store
+
+# backup gambar asli (besar) — hanya simpan versi banner yang sudah di-resize
+docs/*-original.png

@@ -1,20 +1,46 @@
-# MikroCLAW
+<div align="center">
 
-> **Mikro**Tik + **CLAW** (Claude) — MCP server yang membuat **Claude Code bisa
-> mengakses, memonitor, dan mengelola perangkat MikroTik RouterOS** lewat tool
-> ber-skema, langsung dari percakapan.
+<img src="docs/mikroclaw-banner.png" alt="MikroCLAW — MikroTik + CLAW (Claude): MCP server + Pulse dashboard" width="100%">
+
+# 🦅 MikroCLAW
+
+### **Mikro**Tik + **CLAW** (Claude) — kendalikan RouterOS dari percakapan Claude Code
+
+**MCP server yang membuat Claude Code bisa mengakses, memonitor, dan mengelola perangkat MikroTik RouterOS lewat tool ber-skema — plus dashboard monitoring live "Pulse".**
+
+[![Versi](https://img.shields.io/badge/versi-v1.3.0-6c4cf0?style=flat-square)](#riwayat-versi)
+[![Lisensi](https://img.shields.io/badge/lisensi-Apache--2.0-1f9d55?style=flat-square)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#prasyarat)
+[![RouterOS](https://img.shields.io/badge/RouterOS-v7.1%2B-293239?style=flat-square&logo=mikrotik&logoColor=white)](#kompatibilitas-routeros-v6-vs-v7)
+[![MCP](https://img.shields.io/badge/protokol-MCP-d97757?style=flat-square)](https://modelcontextprotocol.io)
+[![Tools](https://img.shields.io/badge/tools-92%20(70%20read%20%2B%2022%20write)-0a7ea4?style=flat-square)](#daftar-tool)
+[![Skills](https://img.shields.io/badge/agent%20skills-6-8b5cf6?style=flat-square)](#skills-playbook-orkestrasi)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555?style=flat-square)](#instalasi)
+[![Read-only default](https://img.shields.io/badge/default-read--only-2ea043?style=flat-square&logo=shieldsdotio&logoColor=white)](#keamanan)
+[![Bahasa](https://img.shields.io/badge/bahasa-Indonesia-e11d48?style=flat-square)](#)
+
+</div>
 
 MikroCLAW menjembatani Claude Code dengan RouterOS melalui **REST API RouterOS v7**
 (HTTPS). Alih-alih Anda mengetik perintah `curl`/`ssh` manual, Claude memanggil
 tool seperti `dhcp_leases` atau `firewall_filter_rules` sebagai pemanggilan ber-skema
 — aman, terstruktur, dan kredensial tidak pernah bocor ke jendela chat.
 
-- 🔒 **Read-only secara default** — aman untuk eksplorasi & monitoring.
-- 🚧 **Operasi write digerbang** oleh flag `MIKROCLAW_ALLOW_WRITE`.
-- 🔑 **Kredensial via `.env`** — tidak muncul di chat, tidak ikut ter-commit.
-- 🧩 **92 tool** (70 read + 22 write), termasuk dua tool generic (`rest_get` / `rest_write`) untuk hal yang belum punya tool khusus.
-- 🧠 **6 Agent Skills** — playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot.
-- 📟 **MikroCLAW Pulse** — laman web monitoring **live per-detik** (read-only, via Server-Sent Events).
+> *"Siapa saja klien DHCP yang aktif?"* · *"Interface mana yang down?"* · *"Blokir IP 10.0.0.5."*
+> — cukup ketik dalam bahasa biasa, Claude memanggil tool yang tepat.
+
+### ✨ Kenapa MikroCLAW?
+
+| | |
+|---|---|
+| 🔒 **Read-only secara default** | Aman untuk eksplorasi & monitoring tanpa risiko mengubah konfigurasi. |
+| 🚧 **Operasi write digerbang** | Setiap tool yang mengubah config dikunci flag `MIKROCLAW_ALLOW_WRITE`. |
+| 🔑 **Kredensial via `.env`** | Tidak pernah muncul di chat, tidak ikut ter-commit. |
+| 🧩 **92 tool ber-skema** | 70 read + 22 write, termasuk `rest_get` / `rest_write` generic untuk path apa pun. |
+| 🧠 **6 Agent Skills** | Playbook siap pakai: health-check, audit firewall, audit keamanan, overview jaringan, troubleshoot, backup-snapshot. |
+| 📟 **MikroCLAW Pulse** | Dashboard web monitoring **live per-detik** (read-only, via Server-Sent Events). |
+| ⚙️ **Installer satu-baris** | Windows (PowerShell) & macOS/Linux (bash) — pasang `uv`, dependency, `.env`, daftar MCP. |
+| 🌐 **Tanpa lock-in v7** | RouterOS v6 cukup ganti lapis transport ke API biner; daftar tool tetap. |
 
 **Versi terkini: `v1.3.0`** · Python 3.10+ · RouterOS v7.1+ · Lisensi Apache-2.0.
 
@@ -50,17 +76,45 @@ Claude Code tidak punya driver MikroTik bawaan. MikroCLAW berperan sebagai
 *tool*. Claude Code memanggil tool itu; MikroCLAW menerjemahkannya menjadi
 panggilan REST API ke RouterOS, lalu mengembalikan JSON hasilnya.
 
-```
-┌────────────┐   panggil tool     ┌──────────────┐   HTTPS /rest/...   ┌────────────┐
-│ Claude Code │ ─────────────────▶ │  MikroCLAW    │ ──────────────────▶ │  RouterOS   │
-│  (CLI/IDE)  │   (stdio MCP)      │ (MCP server)  │   REST API v7       │  (MikroTik) │
-│             │ ◀───────────────── │               │ ◀────────────────── │            │
-└────────────┘   hasil JSON       └──────────────┘   JSON               └────────────┘
-                                    membaca .env
-                                  (host, user, pass)
+```mermaid
+flowchart LR
+    subgraph local["💻 Mesin Anda (lokal)"]
+        CC["Claude Code<br/>(CLI · IDE · Web)"]
+        MC["🦅 MikroCLAW<br/>MCP server + Pulse"]
+        ENV[(".env<br/>host · user · pass")]
+    end
+    ROS["📡 RouterOS<br/>(MikroTik v7)"]
+    BROWSER["🌐 Browser<br/>(Pulse dashboard)"]
+
+    CC -- "panggil tool (stdio MCP)" --> MC
+    MC -- "hasil JSON" --> CC
+    MC -- "HTTPS /rest/... (REST API v7)" --> ROS
+    ROS -- "JSON" --> MC
+    ENV -. "dibaca saat start" .-> MC
+    BROWSER -- "SSE live per-detik" --> MC
+
+    classDef box fill:#10182a,stroke:#1f2d44,color:#e6edf3;
+    class CC,MC,ROS,BROWSER box;
 ```
 
-**Alurnya:**
+**Alurnya** (mis. *"siapa saja klien DHCP yang aktif?"*):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 👤 Anda
+    participant C as Claude Code
+    participant M as 🦅 MikroCLAW
+    participant R as 📡 RouterOS
+    U->>C: "siapa klien DHCP yang aktif?"
+    C->>M: panggil tool dhcp_leases (MCP/stdio)
+    M->>R: GET /rest/ip/dhcp-server/lease (Basic Auth dari .env)
+    R-->>M: JSON daftar lease
+    M-->>C: hasil terstruktur
+    C-->>U: ringkasan klien DHCP
+```
+
+**Rinciannya:**
 
 1. Anda menulis prompt biasa, mis. *"siapa saja klien DHCP yang aktif?"*.
 2. Claude Code memilih tool `dhcp_leases` dan memanggilnya lewat protokol MCP (stdio).
@@ -129,6 +183,18 @@ Membuat sertifikat self-signed (jika belum ada):
 ---
 
 ## Instalasi
+
+Pilih jalur tercepat sesuai OS Anda — installer mengurus `uv`, dependency, `.env`, dan registrasi MCP sekaligus:
+
+| Jalur | OS | Kapan dipakai | Perintah |
+|---|---|---|---|
+| 🚀 **Bootstrap 1-baris** | Windows | Belum punya repo, ingin clone + install sekaligus | `irm .../bootstrap.ps1 \| iex` |
+| 🚀 **Bootstrap 1-baris** | macOS / Linux | Belum punya repo, ingin clone + install sekaligus | `curl -LsSf .../bootstrap.sh \| bash` |
+| 🛠️ **Installer lokal** | Windows | Sudah punya repo | `.\install.ps1` (atau double-click `install.bat`) |
+| 🛠️ **Installer lokal** | macOS / Linux | Sudah punya repo | `./install.sh` |
+| ✋ **Manual** | semua | Ingin kontrol penuh tiap langkah | `cp .env.example .env` lalu `uv sync` |
+
+Detail tiap jalur di bawah.
 
 ### Windows (installer otomatis)
 
@@ -251,6 +317,32 @@ server project-scope — setujui untuk mengaktifkannya.
 ---
 
 ## Daftar tool
+
+**92 tool** terbagi dua kelas: **READ** (selalu aktif) dan **WRITE** (digerbang flag).
+
+```mermaid
+pie showData
+    title Distribusi 92 tool MikroCLAW
+    "Read (selalu aktif)" : 70
+    "Write (digerbang)" : 22
+```
+
+Cakupan domain READ (ringkas):
+
+| Domain | Contoh tool |
+|---|---|
+| 🖥️ Sistem & perangkat | `system_resource`, `system_health`, `routerboard_info`, `system_packages`, `system_license` |
+| 🔌 Interface & L2 | `list_interfaces`, `ethernet_ports`, `bridge_ports`, `bridge_hosts`, `vlans` |
+| 🌐 IP & routing | `list_ip_addresses`, `routing_table`, `arp_table`, `neighbors`, `dhcp_*` |
+| 🛡️ Firewall & NAT | `firewall_filter_rules`, `firewall_nat_rules`, `firewall_mangle`, `address_lists`, `firewall_connections` |
+| 📶 WiFi & CAPsMAN | `wifi_interfaces`, `wifi_registrations`, `wifi_radios`, `capsman_remote_caps` |
+| 🔐 VPN & tunnel | `wireguard_*`, `ppp_active`, `ppp_secrets`, `ipsec_peers`, `ipsec_active_peers` |
+| 📈 QoS & bandwidth | `simple_queues`, `queue_tree`, `ppp_profiles`, `ip_pools` |
+| 🌍 IPv6 | `ipv6_addresses`, `ipv6_routes`, `ipv6_firewall_filter`, `ipv6_neighbors` |
+| 🧭 Routing dinamis | `bgp_sessions`, `ospf_neighbors` |
+| 👥 Hotspot & AAA | `hotspot_servers`, `hotspot_active`, `hotspot_users`, `radius_servers` |
+| 🔎 Keamanan & audit | `router_users`, `user_groups`, `active_sessions`, `certificates`, `ip_services` |
+| 🩺 Diagnostik | `ping`, `traceroute`, `interface_traffic_live`, `recent_logs`, `netwatch`, `check_for_updates` |
 
 ### Read — selalu aktif
 
@@ -393,6 +485,32 @@ yang sudah ikut `mcp`), belum ada lapis kecerdasan LLM (menyusul Fase 2).
 uv run mikroclaw-web                 # atau:  python -m mikroclaw.web
 # buka http://127.0.0.1:8800
 ```
+
+**Arsitektur Pulse — empat loop polling bertingkat → state in-memory → SSE → browser:**
+
+```mermaid
+flowchart LR
+    subgraph poller["poller.py — empat loop async"]
+        F["⚡ fast · 1 dtk<br/>resource · health · throughput"]
+        M["🔄 mid · 5 dtk<br/>klien · firewall · queue"]
+        S["🐢 slow · 30 dtk<br/>WAN · service · sertifikat"]
+        P["📡 ping · 5 dtk<br/>RTT gateway & 8.8.8.8"]
+    end
+    ROS["📡 RouterOS<br/>REST v7"]
+    STATE[("🧠 state in-memory<br/>+ ring-buffer 60 dtk")]
+    APP["app.py<br/>Starlette + SSE"]
+    UI["🌐 index.html<br/>(vanilla JS, 0 dependency)"]
+
+    ROS --> F & M & S & P
+    F & M & S & P --> STATE
+    STATE -- "snapshot tiap tick" --> APP
+    APP -- "/api/stream (SSE)" --> UI
+
+    classDef box fill:#10182a,stroke:#1f2d44,color:#e6edf3;
+    class F,M,S,P,ROS,STATE,APP,UI box;
+```
+
+> 💡 **Throughput** diturunkan dari **delta counter rx/tx `/interface`** (satu request untuk semua interface), bukan `monitor-traffic` per-interface — jauh lebih ringan untuk router.
 
 | ENV | Default | Keterangan |
 |---|---|---|
